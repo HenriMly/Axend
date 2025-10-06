@@ -1,6 +1,7 @@
 'use client';
 
 import Link from "next/link";
+import Image from "next/image";
 import { useState, useEffect } from "react";
 import { useAuth, authService } from '@/lib/auth';
 
@@ -64,13 +65,25 @@ export default function Home() {
       {/* Header */}
       <header className="w-full px-6 py-4 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700">
         <div className="max-w-6xl mx-auto flex justify-between items-center">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold text-lg">A</span>
+          <div className="flex items-center space-x-3">
+            {/* Logo Axend */}
+            <div className="relative">
+              <Image 
+                src="/axendfond.png" 
+                alt="Axend Logo" 
+                width={40}
+                height={40}
+                className="rounded-xl shadow-lg object-contain"
+                priority
+              />
+              <div className="absolute -top-1 -right-1 w-3 h-3 bg-gradient-to-r from-cyan-400 to-blue-500 rounded-full animate-pulse"></div>
             </div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              Axend
-            </h1>
+            <div className="flex flex-col">
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent leading-tight">
+                Axend
+              </h1>
+              <span className="text-xs text-gray-500 dark:text-gray-400 font-medium -mt-1">FITNESS</span>
+            </div>
           </div>
           
           <div className="flex gap-4 items-center">
