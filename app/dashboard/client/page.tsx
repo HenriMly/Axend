@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useRequireClient, useAuth } from "@/lib/auth-context";
 
 interface ClientUser {
   id: string;
@@ -70,132 +71,128 @@ interface Measurement {
 }
 
 export default function ClientDashboard() {
-  const [client, setClient] = useState<ClientUser | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
-  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const { user, userProfile, loading, isClient, signOut } = useRequireClient();
+
+  // Créer les données du client à partir du profil authentifié
+  const [client, setClient] = useState<ClientUser | null>(null);
 
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      const user = JSON.parse(userData);
-      if (user.role === 'client') {
-        // Simulation de données client
-        const mockClientData: ClientUser = {
-          id: user.id,
-          name: user.name,
-          email: user.email,
-          role: user.role,
-          coachId: user.coachId || 'coach_demo',
-          currentWeight: 70,
-          targetWeight: 75,
-          age: 28,
-          height: 175,
-          coach: {
-            name: 'Coach Durand',
-            email: 'coach@example.com'
+    if (!loading && userProfile && isClient) {
+      // Simulation de données client basées sur le profil réel
+      const mockClientData: ClientUser = {
+        id: userProfile.id,
+        name: userProfile.name || 'Client',
+        email: userProfile.email || user?.email || '',
+        role: 'client',
+        coachId: userProfile.coach_id || 'coach_demo',
+        currentWeight: userProfile.current_weight || 70,
+        targetWeight: userProfile.target_weight || 75,
+        age: userProfile.age || 28,
+        height: userProfile.height || 175,
+        coach: {
+          name: userProfile.coaches?.name || 'Coach Durand',
+          email: userProfile.coaches?.email || 'coach@example.com'
+        },
+        programs: [
+          {
+            id: 'p1',
+            name: 'Prise de masse débutant',
+            description: 'Programme de 8 semaines pour développer la masse musculaire',
+            frequency: '3 fois par semaine',
+            duration: '60 minutes',
+            exercises: [
+              {
+                name: 'Squat',
+                sets: 3,
+                reps: '8-12',
+                weight: '60-70kg',
+                rest: '90 secondes',
+                instructions: 'Descendez jusqu\'à ce que vos cuisses soient parallèles au sol'
+              },
+              {
+                name: 'Développé couché',
+                sets: 3,
+                reps: '8-10',
+                weight: '50-60kg',
+                rest: '120 secondes',
+                instructions: 'Contrôlez la descente, poussez explosif'
+              },
+              {
+                name: 'Rowing barre',
+                sets: 3,
+                reps: '10-12',
+                weight: '40-50kg',
+                rest: '90 secondes'
+              }
+            ]
+          }
+        ],
+        workouts: [
+          {
+            id: 'w1',
+            date: '2024-10-01',
+            program: 'Prise de masse débutant',
+            duration: 65,
+            completed: true,
+            exercises: [
+              {
+                name: 'Squat',
+                sets: [
+                  { reps: 10, weight: 60, completed: true },
+                  { reps: 9, weight: 65, completed: true },
+                  { reps: 8, weight: 65, completed: true }
+                ]
+              },
+              {
+                name: 'Développé couché',
+                sets: [
+                  { reps: 10, weight: 50, completed: true },
+                  { reps: 9, weight: 55, completed: true },
+                  { reps: 8, weight: 55, completed: true }
+                ]
+              }
+            ],
+            notes: 'Très bonne séance, j\'ai bien progressé sur le squat!'
           },
-          programs: [
-            {
-              id: 'p1',
-              name: 'Prise de masse débutant',
-              description: 'Programme de 8 semaines pour développer la masse musculaire',
-              frequency: '3 fois par semaine',
-              duration: '60 minutes',
-              exercises: [
-                {
-                  name: 'Squat',
-                  sets: 3,
-                  reps: '8-12',
-                  weight: '60-70kg',
-                  rest: '90 secondes',
-                  instructions: 'Descendez jusqu\'à ce que vos cuisses soient parallèles au sol'
-                },
-                {
-                  name: 'Développé couché',
-                  sets: 3,
-                  reps: '8-10',
-                  weight: '50-60kg',
-                  rest: '120 secondes',
-                  instructions: 'Contrôlez la descente, poussez explosif'
-                },
-                {
-                  name: 'Rowing barre',
-                  sets: 3,
-                  reps: '10-12',
-                  weight: '40-50kg',
-                  rest: '90 secondes'
-                }
-              ]
-            }
-          ],
-          workouts: [
-            {
-              id: 'w1',
-              date: '2024-10-01',
-              program: 'Prise de masse débutant',
-              duration: 65,
-              completed: true,
-              exercises: [
-                {
-                  name: 'Squat',
-                  sets: [
-                    { reps: 10, weight: 60, completed: true },
-                    { reps: 9, weight: 65, completed: true },
-                    { reps: 8, weight: 65, completed: true }
-                  ]
-                },
-                {
-                  name: 'Développé couché',
-                  sets: [
-                    { reps: 10, weight: 50, completed: true },
-                    { reps: 9, weight: 55, completed: true },
-                    { reps: 8, weight: 55, completed: true }
-                  ]
-                }
-              ],
-              notes: 'Très bonne séance, j\'ai bien progressé sur le squat!'
-            },
-            {
-              id: 'w2',
-              date: '2024-09-29',
-              program: 'Prise de masse débutant',
-              duration: 60,
-              completed: true,
-              exercises: [
-                {
-                  name: 'Squat',
-                  sets: [
-                    { reps: 10, weight: 55, completed: true },
-                    { reps: 10, weight: 60, completed: true },
-                    { reps: 8, weight: 60, completed: true }
-                  ]
-                }
-              ]
-            }
-          ],
-          measurements: [
-            { date: '2024-10-01', weight: 70.2, bodyFat: 15, muscle: 55 },
-            { date: '2024-09-15', weight: 69.8, bodyFat: 16, muscle: 54 },
-            { date: '2024-09-01', weight: 69.5, bodyFat: 16.5, muscle: 53.5 },
-          ]
-        };
-        setClient(mockClientData);
-      } else {
-        router.push('/dashboard/coach');
-      }
-    } else {
-      router.push('/auth/login');
+          {
+            id: 'w2',
+            date: '2024-09-29',
+            program: 'Prise de masse débutant',
+            duration: 60,
+            completed: true,
+            exercises: [
+              {
+                name: 'Squat',
+                sets: [
+                  { reps: 10, weight: 55, completed: true },
+                  { reps: 10, weight: 60, completed: true },
+                  { reps: 8, weight: 60, completed: true }
+                ]
+              }
+            ]
+          }
+        ],
+        measurements: [
+          { date: '2024-10-01', weight: 70.2, bodyFat: 15, muscle: 55 },
+          { date: '2024-09-15', weight: 69.8, bodyFat: 16, muscle: 54 },
+          { date: '2024-09-01', weight: 69.5, bodyFat: 16.5, muscle: 53.5 },
+        ]
+      };
+      setClient(mockClientData);
     }
-    setIsLoading(false);
-  }, [router]);
+  }, [user, userProfile, loading, isClient]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('user');
-    router.push('/');
+  const handleLogout = async () => {
+    try {
+      await signOut();
+    } catch (error) {
+      console.error('Error signing out:', error);
+    }
   };
 
-  if (isLoading) {
+  if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-white dark:from-gray-900 dark:to-gray-800">
         <div className="flex items-center space-x-3">
@@ -242,12 +239,20 @@ export default function ClientDashboard() {
                 </div>
               </div>
             </div>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
-            >
-              Se déconnecter
-            </button>
+            <div className="flex gap-2">
+              <Link
+                href="/dashboard/client/settings"
+                className="px-4 py-2 text-sm font-medium text-gray-600 hover:text-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+              >
+                Paramètres
+              </Link>
+              <button
+                onClick={handleLogout}
+                className="px-4 py-2 text-sm font-medium text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+              >
+                Se déconnecter
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -310,6 +315,50 @@ export default function ClientDashboard() {
               </div>
             </div>
           </div>
+        </div>
+
+        {/* Quick Actions */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+          <Link
+            href="/dashboard/client/workout"
+            className="flex items-center justify-center p-4 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors group"
+          >
+            <svg className="w-6 h-6 mr-3 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+            </svg>
+            <span className="font-medium">Commencer séance</span>
+          </Link>
+          
+          <Link
+            href="/dashboard/client/programs"
+            className="flex items-center justify-center p-4 bg-green-600 text-white rounded-xl hover:bg-green-700 transition-colors group"
+          >
+            <svg className="w-6 h-6 mr-3 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span className="font-medium">Mes programmes</span>
+          </Link>
+          
+          <Link
+            href="/dashboard/client/progress"
+            className="flex items-center justify-center p-4 bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-colors group"
+          >
+            <svg className="w-6 h-6 mr-3 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            <span className="font-medium">Mes progrès</span>
+          </Link>
+          
+          <Link
+            href="/dashboard/client/settings"
+            className="flex items-center justify-center p-4 bg-gray-600 text-white rounded-xl hover:bg-gray-700 transition-colors group"
+          >
+            <svg className="w-6 h-6 mr-3 group-hover:scale-110 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <span className="font-medium">Paramètres</span>
+          </Link>
         </div>
 
         {/* Tabs */}
@@ -401,9 +450,12 @@ export default function ClientDashboard() {
                       <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{program.name}</h3>
                       <p className="text-sm text-gray-600 dark:text-gray-400">{program.description}</p>
                     </div>
-                    <button className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg">
+                    <Link
+                      href="/dashboard/client/workout"
+                      className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg"
+                    >
                       Commencer séance
-                    </button>
+                    </Link>
                   </div>
                 </div>
                 <div className="p-6">

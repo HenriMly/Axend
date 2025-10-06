@@ -115,7 +115,17 @@ export const authService = {
       password
     })
 
-    if (error) throw error
+    if (error) {
+      // Handle email confirmation error with helpful message
+      if (error.message === 'Email not confirmed') {
+        throw new Error(
+          'Votre email n\'a pas été confirmé. ' +
+          'Vérifiez votre boîte mail ou contactez l\'administrateur. ' +
+          'En développement, l\'administrateur peut désactiver la confirmation d\'email dans les paramètres Supabase.'
+        )
+      }
+      throw error
+    }
     return data
   },
 

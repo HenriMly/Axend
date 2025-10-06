@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth, authService } from '@/lib/auth';
+import { useRequireCoach } from "@/lib/auth-context";
 import { dataService } from '@/lib/data';
 
 interface Client {
@@ -28,45 +28,35 @@ interface Coach {
 }
 
 export default function CoachDashboard() {
-  const { user: authUser, loading: authLoading } = useAuth();
+  const { user, userProfile, loading, isCoach, signOut } = useRequireCoach();
   const [coach, setCoach] = useState<Coach | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
-    if (authLoading) return;
+    if (loading) return;
 
-    if (!authUser) {
-      router.push('/auth/login');
-      return;
-    }
-
-    // Get coach profile from database
-    authService.getUserProfile(authUser.id)
-      .then(async profile => {
-        if (profile.role === 'coach') {
-          // Get clients data
-          const clients = await dataService.getCoachClients(profile.id);
+    if (!loading && userProfile && isCoach) {
+      // Get clients data
+      dataService.getCoachClients(userProfile.id)
+        .then(clients => {
           const coachData = {
-            ...profile,
+            ...userProfile,
             clients: clients
           };
           setCoach(coachData as Coach);
-        } else {
-          router.push('/dashboard/client');
-        }
-        setIsLoading(false);
-      })
-      .catch(error => {
-        console.error('Error fetching coach profile:', error);
-        router.push('/auth/login');
-      });
-  }, [authUser, authLoading, router]);
+          setIsLoading(false);
+        })
+        .catch((error: any) => {
+          console.error('Error fetching coach clients:', error);
+          setIsLoading(false);
+        });
+    }
+  }, [user, userProfile, loading, isCoach]);
 
   const handleLogout = async () => {
     try {
-      await authService.signOut();
-      router.push('/');
+      await signOut();
     } catch (error) {
       console.error('Error signing out:', error);
     }

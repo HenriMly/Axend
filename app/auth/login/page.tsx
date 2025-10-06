@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { authService } from '@/lib/auth';
+import { useAuth } from '@/lib/auth-context';
 
 const LoginForm: React.FC = () => {
     const [form, setForm] = useState({
@@ -14,6 +14,18 @@ const LoginForm: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
+    const { user, userProfile, signIn, loading } = useAuth();
+
+    // Rediriger si déjà connecté
+    useEffect(() => {
+        if (!loading && user && userProfile) {
+            if (userProfile.role === 'coach') {
+                router.push('/dashboard/coach');
+            } else if (userProfile.role === 'client') {
+                router.push('/dashboard/client');
+            }
+        }
+    }, [user, userProfile, loading, router]);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         setForm({ ...form, [e.target.name]: e.target.value });
@@ -32,10 +44,8 @@ const LoginForm: React.FC = () => {
         }
 
         try {
-            await authService.signIn(form.email, form.password);
-            
-            // Redirect to home page
-            router.push('/');
+            await signIn(form.email, form.password);
+            // La redirection se fera automatiquement via useEffect
         } catch (err: any) {
             setError(err.message || 'Erreur lors de la connexion. Veuillez réessayer.');
             console.error('Login error:', err);

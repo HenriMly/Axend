@@ -1,7 +1,7 @@
 'use client';
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
 
 interface Client {
@@ -46,11 +46,14 @@ interface Measurement {
   muscle?: number;
 }
 
-export default function ClientDetail({ params }: { params: { clientId: string } }) {
+export default function ClientDetail({ params }: { params: Promise<{ clientId: string }> }) {
   const [client, setClient] = useState<Client | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  
+  // Unwrap the params promise using React.use()
+  const { clientId } = use(params);
 
   useEffect(() => {
     const userData = localStorage.getItem('user');
@@ -59,16 +62,16 @@ export default function ClientDetail({ params }: { params: { clientId: string } 
       if (user.role === 'coach') {
         // Simulation de données détaillées du client
         const mockClient: Client = {
-          id: params.clientId,
-          name: params.clientId === 'client_1' ? 'Marie Dupont' : 'Pierre Martin',
-          email: params.clientId === 'client_1' ? 'marie@example.com' : 'pierre@example.com',
-          joinedDate: params.clientId === 'client_1' ? '2024-01-15' : '2024-02-10',
+          id: clientId,
+          name: clientId === 'client_1' ? 'Marie Dupont' : 'Pierre Martin',
+          email: clientId === 'client_1' ? 'marie@example.com' : 'pierre@example.com',
+          joinedDate: clientId === 'client_1' ? '2024-01-15' : '2024-02-10',
           lastWorkout: '2024-10-01',
-          programs: params.clientId === 'client_1' ? ['Perte de poids', 'Cardio'] : ['Prise de masse', 'Force'],
-          currentWeight: params.clientId === 'client_1' ? 65 : 75,
-          targetWeight: params.clientId === 'client_1' ? 60 : 80,
-          age: params.clientId === 'client_1' ? 28 : 32,
-          height: params.clientId === 'client_1' ? 165 : 178,
+          programs: clientId === 'client_1' ? ['Perte de poids', 'Cardio'] : ['Prise de masse', 'Force'],
+          currentWeight: clientId === 'client_1' ? 65 : 75,
+          targetWeight: clientId === 'client_1' ? 60 : 80,
+          age: clientId === 'client_1' ? 28 : 32,
+          height: clientId === 'client_1' ? 165 : 178,
           workouts: [
             {
               id: 'w1',
@@ -105,9 +108,9 @@ export default function ClientDetail({ params }: { params: { clientId: string } 
             }
           ],
           measurements: [
-            { date: '2024-10-01', weight: params.clientId === 'client_1' ? 65 : 75, bodyFat: 18, muscle: 45 },
-            { date: '2024-09-15', weight: params.clientId === 'client_1' ? 66 : 74, bodyFat: 19, muscle: 44 },
-            { date: '2024-09-01', weight: params.clientId === 'client_1' ? 67 : 73, bodyFat: 20, muscle: 43 },
+            { date: '2024-10-01', weight: clientId === 'client_1' ? 65 : 75, bodyFat: 18, muscle: 45 },
+            { date: '2024-09-15', weight: clientId === 'client_1' ? 66 : 74, bodyFat: 19, muscle: 44 },
+            { date: '2024-09-01', weight: clientId === 'client_1' ? 67 : 73, bodyFat: 20, muscle: 43 },
           ]
         };
         setClient(mockClient);
@@ -118,7 +121,7 @@ export default function ClientDetail({ params }: { params: { clientId: string } 
       router.push('/auth/login');
     }
     setIsLoading(false);
-  }, [params.clientId, router]);
+  }, [clientId, router]);
 
   if (isLoading) {
     return (
