@@ -5,25 +5,68 @@ export const dataService = {
   
   // Get all clients for a coach
   async getCoachClients(coachId: string) {
-    const { data, error } = await supabase
-      .from('clients')
-      .select(`
-        *,
-        workouts(id, date, completed),
-        measurements(date, weight)
-      `)
-      .eq('coach_id', coachId)
-      .order('created_at', { ascending: false })
+    // Try the rich select (may fail on some PostgREST setups)
+    try {
+      const { data, error } = await supabase
+        .from('clients')
+        .select(`
+          *,
+          workouts(id, date, completed),
+          measurements(date, weight),
+          programs(name)
+        `)
+        .eq('coach_id', coachId)
+        .order('created_at', { ascending: false })
 
-    if (error) throw error
+      if (error) throw error
 
-    // Process data to add last workout and current programs
-    return data.map(client => ({
-      ...client,
-      lastWorkout: client.workouts?.[0]?.date || null,
-      programs: ['Programme personnalisé'], // TODO: Get real programs
-      workoutCount: client.workouts?.length || 0
-    }))
+      // Process data to add last workout and current programs
+      return data.map(client => ({
+        ...client,
+        lastWorkout: client.workouts?.[0]?.date || null,
+        programs: client.programs?.map((p: any) => p.name) || ['Programme personnalisé'],
+        workoutCount: client.workouts?.length || 0
+      }))
+    } catch (err) {
+      // Fallback: fetch clients + workouts/measurements only, then fetch programs separately
+      console.warn('[dataService.getCoachClients] complex select failed, falling back:', err)
+
+      const { data: clientsSimple, error: clientsErr } = await supabase
+        .from('clients')
+        .select(`
+          *,
+          workouts(id, date, completed),
+          measurements(date, weight)
+        `)
+        .eq('coach_id', coachId)
+        .order('created_at', { ascending: false })
+
+      if (clientsErr) throw clientsErr
+
+      // Fetch programs for this coach (group by client_id)
+      const { data: programsList, error: programsErr } = await supabase
+        .from('programs')
+        .select('id, name, client_id')
+        .eq('coach_id', coachId)
+
+      if (programsErr) {
+        console.warn('[dataService.getCoachClients] failed to fetch programs', programsErr)
+      }
+
+  const programMap: Record<string, string[]> = {} as Record<string, string[]>
+      (programsList || []).forEach((p: any) => {
+        if (!p.client_id) return
+        programMap[p.client_id] = programMap[p.client_id] || []
+        programMap[p.client_id].push(p.name)
+      })
+
+      return (clientsSimple || []).map(client => ({
+        ...client,
+        lastWorkout: client.workouts?.[0]?.date || null,
+        programs: programMap[client.id] || ['Programme personnalisé'],
+        workoutCount: client.workouts?.length || 0
+      }))
+    }
   },
 
   // Get detailed client data
@@ -110,6 +153,31 @@ export const dataService = {
       `)
       .eq('client_id', clientId)
       .order('created_at', { ascending: false })
+
+    if (error) throw error
+    return data
+  },
+
+  // Update a program
+  async updateProgram(programId: string, updates: { name?: string; description?: string; frequency?: string; duration?: string; }) {
+    const { data, error } = await supabase
+      .from('programs')
+      .update(updates)
+      .eq('id', programId)
+      .select()
+      .single()
+
+    if (error) throw error
+    return data
+  },
+
+  // Delete a program
+  async deleteProgram(programId: string) {
+    const { data, error } = await supabase
+      .from('programs')
+      .delete()
+      .eq('id', programId)
+      .select()
 
     if (error) throw error
     return data

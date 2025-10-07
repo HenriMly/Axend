@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState, useEffect, use } from "react";
 import { useRouter } from "next/navigation";
+import { dataService } from '@/lib/data';
+import { useRequireCoach } from '@/lib/auth-context';
 
 interface Client {
   id: string;
@@ -47,81 +49,74 @@ interface Measurement {
 }
 
 export default function ClientDetail({ params }: { params: Promise<{ clientId: string }> }) {
+  const { user, userProfile } = useRequireCoach();
   const [client, setClient] = useState<Client | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const [editingProgram, setEditingProgram] = useState<any | null>(null);
+  const [creatingProgram, setCreatingProgram] = useState(false);
   
   // Unwrap the params promise using React.use()
   const { clientId } = use(params);
 
   useEffect(() => {
-    const userData = localStorage.getItem('user');
-    if (userData) {
-      const user = JSON.parse(userData);
-      if (user.role === 'coach') {
-        // Simulation de données détaillées du client
-        const mockClient: Client = {
-          id: clientId,
-          name: clientId === 'client_1' ? 'Marie Dupont' : 'Pierre Martin',
-          email: clientId === 'client_1' ? 'marie@example.com' : 'pierre@example.com',
-          joinedDate: clientId === 'client_1' ? '2024-01-15' : '2024-02-10',
-          lastWorkout: '2024-10-01',
-          programs: clientId === 'client_1' ? ['Perte de poids', 'Cardio'] : ['Prise de masse', 'Force'],
-          currentWeight: clientId === 'client_1' ? 65 : 75,
-          targetWeight: clientId === 'client_1' ? 60 : 80,
-          age: clientId === 'client_1' ? 28 : 32,
-          height: clientId === 'client_1' ? 165 : 178,
-          workouts: [
-            {
-              id: 'w1',
-              date: '2024-10-01',
-              program: 'Cardio',
-              duration: 45,
-              exercises: [
-                {
-                  name: 'Course à pied',
-                  sets: [{ reps: 1, weight: 0, rest: 0 }]
-                },
-                {
-                  name: 'Vélo',
-                  sets: [{ reps: 1, weight: 0, rest: 0 }]
-                }
-              ],
-              notes: 'Bonne séance, motivation au top!'
-            },
-            {
-              id: 'w2',
-              date: '2024-09-29',
-              program: 'Force',
-              duration: 60,
-              exercises: [
-                {
-                  name: 'Squat',
-                  sets: [{ reps: 12, weight: 60, rest: 90 }, { reps: 10, weight: 65, rest: 90 }]
-                },
-                {
-                  name: 'Développé couché',
-                  sets: [{ reps: 10, weight: 50, rest: 120 }]
-                }
-              ]
-            }
-          ],
-          measurements: [
-            { date: '2024-10-01', weight: clientId === 'client_1' ? 65 : 75, bodyFat: 18, muscle: 45 },
-            { date: '2024-09-15', weight: clientId === 'client_1' ? 66 : 74, bodyFat: 19, muscle: 44 },
-            { date: '2024-09-01', weight: clientId === 'client_1' ? 67 : 73, bodyFat: 20, muscle: 43 },
-          ]
+    let mounted = true;
+
+    const load = async () => {
+      setIsLoading(true);
+
+      try {
+        // fetch client detail from DB
+        const data = await dataService.getClientDetail(clientId);
+        if (!mounted) return;
+
+        // Map DB shape to our UI-friendly shape
+        const mapped: Client = {
+          id: data.id,
+          name: data.name,
+          email: data.email,
+          joinedDate: data.created_at || data.joined_date || new Date().toISOString(),
+          lastWorkout: data.workouts?.[0]?.date || null,
+          programs: (data.programs || []).map((p: any) => p.name),
+          currentWeight: data.current_weight || 0,
+          targetWeight: data.target_weight || 0,
+          age: data.age || 0,
+          height: data.height || 0,
+          workouts: (data.workouts || []).map((w: any) => ({
+            id: w.id,
+            date: w.date,
+            program: w.program_id || w.program || '',
+            duration: w.duration || 0,
+            exercises: (w.workout_exercises || []).map((we: any) => ({
+              name: we.name || 'Exercice',
+              sets: (we.workout_sets || []).map((s: any) => ({ reps: s.reps, weight: s.weight, rest: s.rest }))
+            })),
+            notes: w.notes || ''
+          })),
+          measurements: (data.measurements || []).map((m: any) => ({ date: m.date, weight: m.weight, bodyFat: m.body_fat, muscle: m.muscle_mass }))
         };
-        setClient(mockClient);
-      } else {
-        router.push('/dashboard/client');
+
+        setClient(mapped);
+      } catch (err) {
+        console.error('Failed to load client detail', err);
+        // if not found or not authorized, navigate back
+        router.push('/dashboard/coach');
+      } finally {
+        if (mounted) setIsLoading(false);
       }
-    } else {
-      router.push('/auth/login');
+    };
+
+    // Ensure the current user is coach
+    if (!userProfile || userProfile.role !== 'coach') {
+      router.push('/dashboard/client');
+      return;
     }
-    setIsLoading(false);
-  }, [clientId, router]);
+
+    load();
+
+    return () => { mounted = false };
+  }, [clientId, router, userProfile]);
 
   if (isLoading) {
     return (
@@ -376,10 +371,26 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{program}</h3>
                     <div className="flex space-x-2">
-                      <button className="px-3 py-1 text-sm font-medium text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-300 rounded-md">
+                      <button onClick={() => setEditingProgram({ name: program })} className="px-3 py-1 text-sm font-medium text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-300 rounded-md">
                         Modifier
                       </button>
-                      <button className="px-3 py-1 text-sm font-medium text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded-md">
+                      <button onClick={async () => {
+                        if (!confirm('Supprimer ce programme ?')) return;
+                        try {
+                          // find program id by name via dataService.getClientPrograms
+                          const programs = await dataService.getClientPrograms(client.id);
+                          const toDelete = programs.find((p: any) => p.name === program);
+                          if (toDelete) {
+                            await dataService.deleteProgram(toDelete.id);
+                            // reload client data
+                            const re = await dataService.getClientDetail(client.id);
+                            setClient(prev => prev ? { ...prev, programs: (re.programs || []).map((p:any)=>p.name) } : prev);
+                          }
+                        } catch (e) {
+                          console.error('Failed to delete program', e);
+                          alert('Impossible de supprimer le programme');
+                        }
+                      }} className="px-3 py-1 text-sm font-medium text-red-600 hover:text-red-700 border border-red-200 hover:border-red-300 rounded-md">
                         Supprimer
                       </button>
                     </div>
@@ -397,9 +408,92 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                 </div>
               </div>
             ))}
+            <div>
+              <button onClick={() => setCreatingProgram(true)} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg">Créer un programme</button>
+            </div>
           </div>
         )}
       </div>
+      {/* Program create/edit modal */}
+      {(creatingProgram || editingProgram) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{editingProgram ? 'Modifier le programme' : 'Créer un programme'}</h3>
+            <ProgramForm
+              initial={editingProgram}
+              clientId={client!.id}
+              coachId={userProfile!.id}
+              onCancel={() => { setEditingProgram(null); setCreatingProgram(false); }}
+              onSaved={async () => {
+                // reload client
+                try {
+                  const re = await dataService.getClientDetail(client!.id);
+                  setClient(prev => prev ? { ...prev, programs: (re.programs || []).map((p:any)=>p.name) } : prev);
+                } catch (e) {
+                  console.error('Failed to reload client after program save', e);
+                }
+                setEditingProgram(null);
+                setCreatingProgram(false);
+              }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
+}
+
+function ProgramForm({ initial, clientId, coachId, onCancel, onSaved }: { initial?: any, clientId: string, coachId: string, onCancel: () => void, onSaved: () => void }) {
+  const [name, setName] = useState(initial?.name || '')
+  const [description, setDescription] = useState(initial?.description || '')
+  const [frequency, setFrequency] = useState(initial?.frequency || '')
+  const [duration, setDuration] = useState(initial?.duration || '')
+  const [isSaving, setIsSaving] = useState(false)
+
+  const handleSave = async () => {
+    setIsSaving(true)
+    try {
+      if (initial && initial.id) {
+        await dataService.updateProgram(initial.id, { name, description, frequency, duration })
+      } else {
+        await dataService.createProgram(coachId, clientId, { name, description, frequency, duration })
+      }
+      await onSaved()
+    } catch (e) {
+      console.error('Program save failed', e)
+      alert('Erreur lors de la sauvegarde')
+    } finally {
+      setIsSaving(false)
+    }
+  }
+
+  return (
+    <div>
+      <div className="space-y-3">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Nom</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} className="mt-1 block w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-700" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Description</label>
+          <textarea value={description} onChange={(e) => setDescription(e.target.value)} className="mt-1 block w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-700" />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Fréquence</label>
+            <input value={frequency} onChange={(e) => setFrequency(e.target.value)} className="mt-1 block w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-700" />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Durée</label>
+            <input value={duration} onChange={(e) => setDuration(e.target.value)} className="mt-1 block w-full px-3 py-2 border rounded-md bg-white dark:bg-gray-700" />
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-4 flex justify-end space-x-2">
+        <button onClick={onCancel} className="px-4 py-2 bg-gray-200 rounded">Annuler</button>
+        <button onClick={handleSave} disabled={isSaving} className="px-4 py-2 bg-blue-600 text-white rounded">{isSaving ? 'Enregistrement...' : 'Enregistrer'}</button>
+      </div>
+    </div>
+  )
 }

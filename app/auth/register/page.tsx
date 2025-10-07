@@ -16,6 +16,7 @@ const RegisterForm: React.FC = () => {
     });
 
     const [error, setError] = useState<string | null>(null);
+    const [success, setSuccess] = useState<string | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const router = useRouter();
 
@@ -28,9 +29,20 @@ const RegisterForm: React.FC = () => {
         setError(null);
         setIsLoading(true);
 
+        // Normalize inputs
+        const normalizedEmail = form.email.trim().toLowerCase();
+
         // Validation
-        if (!form.name || !form.email || !form.password || !form.confirmPassword) {
+        if (!form.name || !normalizedEmail || !form.password || !form.confirmPassword) {
             setError('Tous les champs sont requis.');
+            setIsLoading(false);
+            return;
+        }
+
+        // Basic email format validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(normalizedEmail)) {
+            setError('Adresse email invalide.');
             setIsLoading(false);
             return;
         }
@@ -54,17 +66,31 @@ const RegisterForm: React.FC = () => {
         }
 
         try {
+            console.debug('[Register] submitting', {
+                normalizedEmail,
+                role: form.role,
+                coachCode: form.coachCode
+            });
+            let signupResult: any = null
             if (form.role === 'coach') {
-                await authService.signUpCoach(form.email, form.password, form.name);
+                signupResult = await authService.signUpCoach(normalizedEmail, form.password, form.name);
             } else {
-                await authService.signUpClient(form.email, form.password, form.name, form.coachCode);
+                signupResult = await authService.signUpClient(normalizedEmail, form.password, form.name, form.coachCode);
             }
-            
-            // Redirect to home page
+
+            // If Supabase didn't return a user object (email confirmation or magic-link flow),
+            // show a 'check your email' message instead of redirecting immediately.
+            if (!signupResult || !signupResult.user || !signupResult.user.email_confirmed_at) {
+                setSuccess('Un email de confirmation a été envoyé. Veuillez vérifier votre boîte mail pour confirmer votre compte.');
+                return;
+            }
+
+            // Otherwise continue to homepage
             router.push('/');
         } catch (err: any) {
-            setError(err.message || 'Erreur lors de l\'inscription. Veuillez réessayer.');
-            console.error('Registration error:', err);
+            const message = err?.message || err?.error || 'Erreur lors de l\'inscription. Veuillez réessayer.';
+            setError(message);
+            try { console.error('Registration error:', JSON.stringify(err)); } catch(e) { console.error('Registration error (raw):', err); }
         } finally {
             setIsLoading(false);
         }
@@ -222,6 +248,11 @@ const RegisterForm: React.FC = () => {
                     {error && (
                         <div className="rounded-md bg-red-50 dark:bg-red-900 p-4">
                             <div className="text-sm text-red-700 dark:text-red-300">{error}</div>
+                        </div>
+                    )}
+                    {success && (
+                        <div className="rounded-md bg-green-50 dark:bg-green-900 p-4">
+                            <div className="text-sm text-green-700 dark:text-green-300">{success}</div>
                         </div>
                     )}
 

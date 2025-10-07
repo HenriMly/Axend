@@ -31,6 +31,7 @@ export default function CoachDashboard() {
   const { user, userProfile, loading, isCoach, signOut } = useRequireCoach();
   const [coach, setCoach] = useState<Coach | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -38,6 +39,8 @@ export default function CoachDashboard() {
 
     if (!loading && userProfile && isCoach) {
       // Get clients data
+      setIsLoading(true);
+      setError(null);
       dataService.getCoachClients(userProfile.id)
         .then(clients => {
           const coachData = {
@@ -45,12 +48,12 @@ export default function CoachDashboard() {
             clients: clients
           };
           setCoach(coachData as Coach);
-          setIsLoading(false);
         })
-        .catch((error: any) => {
-          console.error('Error fetching coach clients:', error);
-          setIsLoading(false);
-        });
+        .catch((err: any) => {
+          console.error('Error fetching coach clients:', err);
+          setError(err?.message || String(err));
+        })
+        .finally(() => setIsLoading(false));
     }
   }, [user, userProfile, loading, isCoach]);
 
@@ -74,7 +77,29 @@ export default function CoachDashboard() {
   }
 
   if (!coach) {
-    return null;
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-xl font-semibold mb-4">Impossible de charger les clients</h2>
+          {error ? (
+            <p className="text-sm text-red-600 mb-4">{error}</p>
+          ) : (
+            <p className="text-sm text-gray-600 mb-4">Aucun client trouvé ou chargement interrompu.</p>
+          )}
+          <div className="flex justify-center gap-4">
+            <button onClick={() => {
+              setIsLoading(true);
+              setError(null);
+              dataService.getCoachClients(userProfile!.id)
+                .then(clients => setCoach({ ...(userProfile as any), clients } as Coach))
+                .catch((e:any) => setError(e?.message || String(e)))
+                .finally(() => setIsLoading(false));
+            }} className="px-4 py-2 bg-blue-600 text-white rounded">Réessayer</button>
+            <button onClick={() => router.push('/')} className="px-4 py-2 bg-gray-200 rounded">Accueil</button>
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

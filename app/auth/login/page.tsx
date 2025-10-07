@@ -44,8 +44,15 @@ const LoginForm: React.FC = () => {
         }
 
         try {
-            await signIn(form.email, form.password);
-            // La redirection se fera automatiquement via useEffect
+            const data = await signIn(form.email, form.password);
+            // If signIn succeeded but the profile is missing, show a hint
+            if (data?.user && !userProfile) {
+                setError(null);
+                // show a temporary message in the UI
+                setTimeout(() => {
+                    // let the useEffect handle redirects after profile loads
+                }, 300);
+            }
         } catch (err: any) {
             setError(err.message || 'Erreur lors de la connexion. Veuillez réessayer.');
             console.error('Login error:', err);

@@ -3,7 +3,8 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useState, useEffect } from "react";
-import { useAuth, authService } from '@/lib/auth';
+import { useAuth } from '@/lib/auth-context';
+import { authService } from '@/lib/auth';
 
 interface User {
   id: string;
