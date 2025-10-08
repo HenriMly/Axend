@@ -321,9 +321,34 @@ export default function ClientDashboard() {
               <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
                 Bienvenue, {displayData.name}!
               </h2>
-              <p className="text-gray-600 dark:text-gray-400">
+              <p className="text-gray-600 dark:text-gray-400 mb-6">
                 {displayData.coach ? `Coach: ${displayData.coach.name}` : 'Aucun coach assigné'}
               </p>
+              
+              {/* Action rapide - Séance du jour */}
+              <div className="max-w-md mx-auto">
+                <Link href="/dashboard/client/workout-today" className="block">
+                  <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200">
+                    <div className="flex items-center justify-center mb-3">
+                      <div className="text-4xl">🔥</div>
+                    </div>
+                    <h3 className="text-xl font-bold mb-2">Séance du jour</h3>
+                    <p className="text-orange-100 text-sm">
+                      {new Date().toLocaleDateString('fr-FR', { 
+                        weekday: 'long', 
+                        day: 'numeric', 
+                        month: 'long' 
+                      })}
+                    </p>
+                    <div className="mt-4">
+                      <div className="bg-white/20 rounded-lg px-4 py-2 inline-flex items-center space-x-2">
+                        <span className="text-sm font-medium">Commencer maintenant</span>
+                        <span>→</span>
+                      </div>
+                    </div>
+                  </div>
+                </Link>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">

@@ -3,19 +3,24 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { dataService } from '@/lib/data';
+import { useRequireClient } from '@/lib/auth-context';
 
 interface Program {
   id: string;
   name: string;
   description: string;
-  exercises: Exercise[];
+  exercises?: Exercise[];
   frequency: string;
   duration: string;
-  difficulty: 'Débutant' | 'Intermédiaire' | 'Avancé';
-  category: string;
-  estimatedCalories: number;
+  difficulty?: 'Débutant' | 'Intermédiaire' | 'Avancé';
+  category?: string;
+  estimatedCalories?: number;
   lastCompleted?: string;
-  progress: number; // pourcentage de completion
+  progress?: number; // pourcentage de completion
+  program_days?: any[];
+  weeks?: number;
+  goal?: string;
 }
 
 interface Exercise {
@@ -28,12 +33,62 @@ interface Exercise {
 }
 
 export default function ClientPrograms() {
-  const [programs, setPrograms] = useState<Program[]>([]);
+  const { user, userProfile } = useRequireClient();
+  const [programs, setPrograms] = useState<any[]>([]);
   const [selectedCategory, setSelectedCategory] = useState('Tous');
   const [selectedDifficulty, setSelectedDifficulty] = useState('Tous');
   const [isLoading, setIsLoading] = useState(true);
+  const [todayWorkout, setTodayWorkout] = useState<any>(null);
   const router = useRouter();
 
+  useEffect(() => {
+    let mounted = true;
+
+    const loadPrograms = async () => {
+      if (!userProfile || userProfile.role !== 'client') return;
+      
+      setIsLoading(true);
+      try {
+        console.log('[ClientPrograms] Loading programs for client:', userProfile.id);
+        
+        // Charger les programmes avancés
+        const clientPrograms = await dataService.getClientProgramsAdvanced(userProfile.id);
+        console.log('[ClientPrograms] Programs loaded:', clientPrograms);
+        
+        if (mounted) {
+          setPrograms(clientPrograms || []);
+        }
+        
+        // Charger la séance du jour
+        const todayData = await dataService.getTodayWorkout(userProfile.id);
+        console.log('[ClientPrograms] Today workout:', todayData);
+        
+        if (mounted && todayData && todayData.length > 0) {
+          setTodayWorkout(todayData[0]);
+        }
+        
+      } catch (error) {
+        console.error('[ClientPrograms] Error loading programs:', error);
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    loadPrograms();
+    return () => { mounted = false };
+  }, [userProfile]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      </div>
+    );
+  }
+
+  // OLD MOCK DATA (to be removed):
   useEffect(() => {
     // Simulation de programmes du client
     const mockPrograms: Program[] = [
@@ -236,6 +291,57 @@ export default function ClientPrograms() {
       </header>
 
       <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Today's Workout Section */}
+        {todayWorkout && todayWorkout.program_days && todayWorkout.program_days.length > 0 && (
+          <div className="mb-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-2xl shadow-lg text-white p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold mb-2">🏋️‍♂️ Séance du jour</h2>
+                <h3 className="text-xl font-semibold mb-1">{todayWorkout.name}</h3>
+                <p className="text-blue-100 mb-4">
+                  {todayWorkout.program_days[0].day_name} • {todayWorkout.program_days[0].workouts?.length || 0} séance(s)
+                </p>
+                
+                {todayWorkout.program_days[0].workouts && todayWorkout.program_days[0].workouts.length > 0 && (
+                  <div className="bg-white/20 rounded-lg p-3 mb-4">
+                    {todayWorkout.program_days[0].workouts.map((workout: any, index: number) => (
+                      <div key={workout.id || index} className="mb-2 last:mb-0">
+                        <div className="font-medium">{workout.name}</div>
+                        <div className="text-sm text-blue-100">
+                          {workout.estimated_duration}min • {workout.workout_exercises?.length || 0} exercices
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              
+              <div className="text-right">
+                <button 
+                  onClick={() => {
+                    // Passer les données de la séance à l'interface d'entraînement
+                    const workoutData = encodeURIComponent(JSON.stringify(todayWorkout));
+                    router.push(`/dashboard/client/workout?data=${workoutData}`);
+                  }}
+                  className="bg-white text-blue-600 px-6 py-3 rounded-xl font-semibold hover:bg-blue-50 transition-colors shadow-lg"
+                >
+                  🚀 Lancer la séance
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* No workout today */}
+        {(!todayWorkout || !todayWorkout.program_days || todayWorkout.program_days.length === 0) && (
+          <div className="mb-8 bg-gray-100 dark:bg-gray-800 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-600 p-6 text-center">
+            <div className="text-gray-500 dark:text-gray-400">
+              <h3 className="text-lg font-medium mb-2">🧘‍♂️ Jour de repos</h3>
+              <p>Aucune séance programmée pour aujourd'hui. Profitez-en pour récupérer !</p>
+            </div>
+          </div>
+        )}
+
         {/* Filters */}
         <div className="mb-8 bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Filtres</h3>
@@ -340,7 +446,7 @@ export default function ClientPrograms() {
                     Exercices ({program.exercises.length})
                   </h4>
                   <div className="space-y-2">
-                    {program.exercises.slice(0, 3).map((exercise, index) => (
+                    {program.exercises?.slice(0, 3).map((exercise: Exercise, index: number) => (
                       <div key={index} className="flex items-center justify-between text-sm">
                         <span className="text-gray-900 dark:text-white">{exercise.name}</span>
                         <span className="text-gray-600 dark:text-gray-400">

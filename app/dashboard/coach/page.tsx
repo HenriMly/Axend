@@ -39,10 +39,12 @@ export default function CoachDashboard() {
 
     if (!loading && userProfile && isCoach) {
       // Get clients data
+      console.log('[CoachDashboard] Starting to fetch clients for coach:', userProfile.id);
       setIsLoading(true);
       setError(null);
       dataService.getCoachClients(userProfile.id)
         .then(clients => {
+          console.log('[CoachDashboard] Successfully fetched clients:', clients);
           const coachData = {
             ...userProfile,
             clients: clients
@@ -51,6 +53,7 @@ export default function CoachDashboard() {
         })
         .catch((err: any) => {
           console.error('Error fetching coach clients:', err);
+          console.error('Error details:', err?.message, err?.code, err?.details);
           setError(err?.message || String(err));
         })
         .finally(() => setIsLoading(false));
@@ -259,6 +262,31 @@ export default function CoachDashboard() {
           </button>
         </div>
 
+        {/* Action rapide - Séances du jour */}
+        <div className="mb-8">
+          <Link href="/dashboard/coach/today-workouts" className="block">
+            <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <div className="text-4xl">📅</div>
+                  <div>
+                    <h3 className="text-xl font-bold mb-1">Séances du jour</h3>
+                    <p className="text-orange-100 text-sm">
+                      Suivez les entraînements de vos clients en temps réel
+                    </p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <div className="bg-white/20 rounded-lg px-4 py-2 inline-flex items-center space-x-2">
+                    <span className="text-sm font-medium">Voir le suivi</span>
+                    <span>→</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </Link>
+        </div>
+
         {/* Clients List */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700">
           <div className="p-6 border-b border-gray-200 dark:border-gray-700">
@@ -281,10 +309,9 @@ export default function CoachDashboard() {
           <div className="p-6">
             <div className="grid gap-4">
               {coach.clients.map((client) => (
-                <Link
+                <div
                   key={client.id}
-                  href={`/dashboard/coach/client/${client.id}`}
-                  className="block p-6 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-lg transition-all hover:border-blue-300 dark:hover:border-blue-600"
+                  className="p-6 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-lg transition-all"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-4">
@@ -333,8 +360,36 @@ export default function CoachDashboard() {
                         <span className="text-xs text-gray-500 dark:text-gray-400">Progression</span>
                       </div>
                     </div>
+                    
+                    {/* Actions rapides */}
+                    <div className="flex space-x-2">
+                      <Link
+                        href={`/dashboard/coach/client/${client.id}`}
+                        className="px-3 py-1 text-sm font-medium text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-300 rounded-md transition-colors"
+                      >
+                        Voir détails
+                      </Link>
+                      <button 
+                        onClick={() => {
+                          // Action rapide: créer un programme
+                          router.push(`/dashboard/coach/client/${client.id}?tab=programs&action=create`);
+                        }}
+                        className="px-3 py-1 text-sm font-medium text-green-600 hover:text-green-700 border border-green-200 hover:border-green-300 rounded-md transition-colors"
+                      >
+                        Nouveau programme
+                      </button>
+                      <button 
+                        onClick={() => {
+                          // Action rapide: ajouter une mesure
+                          router.push(`/dashboard/coach/client/${client.id}?tab=progress&action=measure`);
+                        }}
+                        className="px-3 py-1 text-sm font-medium text-purple-600 hover:text-purple-700 border border-purple-200 hover:border-purple-300 rounded-md transition-colors"
+                      >
+                        Ajouter mesure
+                      </button>
+                    </div>
                   </div>
-                </Link>
+                </div>
               ))}
             </div>
           </div>

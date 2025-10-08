@@ -268,13 +268,17 @@ export function useRequireCoach() {
   const router = useRouter();
 
   useEffect(() => {
+    console.log('[useRequireCoach] State check:', { user: !!user, userProfile: !!userProfile, loading, role: userProfile?.role });
+    
     if (!loading && !user) {
+      console.log('[useRequireCoach] No user, redirecting to coach login');
       router.push('/auth/coach/login');
     }
   }, [user, loading, router]);
 
   useEffect(() => {
     if (!loading && userProfile && userProfile.role !== 'coach') {
+      console.log('[useRequireCoach] User is not a coach, redirecting to client dashboard');
       router.push('/dashboard/client');
     }
   }, [userProfile, loading, router]);

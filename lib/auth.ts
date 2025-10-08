@@ -199,19 +199,31 @@ export const authService = {
   },
 
   async getUserProfile(userId: string) {
+    console.log('[auth.getUserProfile] Starting lookup for userId:', userId);
     try {
-      // Try coach profile first
-      const { data: coach } = await supabase.from('coaches').select('*, clients(*)').eq('id', userId).single()
-      if (coach) return { ...coach, role: 'coach' }
+      // Try coach profile first - use simple select to avoid relation issues
+      const { data: coach, error: coachError } = await supabase.from('coaches').select('*').eq('id', userId).single()
+      
+      if (coachError) {
+        console.log('[auth.getUserProfile] Coach lookup error:', coachError.code, coachError.message);
+        if (coachError.code !== 'PGRST116') {
+          // It's not a "0 rows" error, log it as a real error
+          console.error('[auth.getUserProfile] Unexpected coach error:', coachError);
+        }
+      } else if (coach) {
+        console.log('[auth.getUserProfile] Found coach profile:', coach.name);
+        return { ...coach, role: 'coach' };
+      }
 
-      // Try client with embedded coach relation. Some PostgREST setups may reject
-      // complex embed/selects and return 406 Not Acceptable. If that happens,
-      // fall back to a simpler query and fetch the coach separately.
+      // Try client with embedded coach relation
+      console.log('[auth.getUserProfile] Trying client lookup with embedded coach...');
       const { data: client, error } = await supabase.from('clients').select('*, coaches(name, email, coach_code)').eq('id', userId).single()
 
       if (error) {
-        try { console.warn('[auth.getUserProfile] embedded select error', JSON.stringify(error)) } catch (e) { console.warn('[auth.getUserProfile] embedded select error', error) }
+        console.warn('[auth.getUserProfile] embedded client select error:', error.code, error.message);
 
+        // Fallback: simple client select
+        console.log('[auth.getUserProfile] Trying simple client lookup...');
         const { data: clientSimple, error: clientSimpleErr } = await supabase.from('clients').select('*').eq('id', userId).single()
 
         if (clientSimpleErr) {
@@ -221,7 +233,7 @@ export const authService = {
             return null
           }
           // Autre erreur plus grave
-          try { console.error('[auth.getUserProfile] client simple select failed', JSON.stringify(clientSimpleErr)) } catch (e) { console.error('[auth.getUserProfile] client simple select failed', clientSimpleErr) }
+          console.error('[auth.getUserProfile] client simple select failed:', clientSimpleErr);
           return null
         }
 
@@ -230,20 +242,27 @@ export const authService = {
           return null
         }
 
+        // Fetch coach data separately if needed
         let coachData = null
         if (clientSimple.coach_id) {
+          console.log('[auth.getUserProfile] Fetching coach data for client...');
           const { data: cdata, error: cErr } = await supabase.from('coaches').select('name, email, coach_code').eq('id', clientSimple.coach_id).single()
           if (!cErr) coachData = cdata
         }
 
+        console.log('[auth.getUserProfile] Returning client profile with coach data');
         return { ...clientSimple, coaches: coachData ? coachData : null, role: 'client' }
       }
 
-      if (client) return { ...client, role: 'client' }
+      if (client) {
+        console.log('[auth.getUserProfile] Found client profile:', client.name);
+        return { ...client, role: 'client' };
+      }
 
+      console.log('[auth.getUserProfile] No profile found for user');
       return null
     } catch (err) {
-      console.error('[auth.getUserProfile] unexpected:', err)
+      console.error('[auth.getUserProfile] unexpected error:', err)
       throw new Error(extractErrorMessage(err))
     }
   },

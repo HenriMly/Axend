@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 interface Exercise {
   id: string;
@@ -33,10 +33,51 @@ export default function ActiveWorkout() {
   const [restTimer, setRestTimer] = useState(0);
   const [workoutStartTime, setWorkoutStartTime] = useState<Date | null>(null);
   const [workoutNotes, setWorkoutNotes] = useState('');
+  const [programData, setProgramData] = useState<any>(null);
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   useEffect(() => {
-    // Simulation d'un entraînement en cours
+    // Charger les données de la séance depuis les paramètres URL
+    const data = searchParams.get('data');
+    if (data) {
+      try {
+        const parsedData = JSON.parse(decodeURIComponent(data));
+        console.log('[ActiveWorkout] Program data loaded:', parsedData);
+        setProgramData(parsedData);
+        
+        // Convertir les exercices du programme en format WorkoutExercise
+        const programWorkout = parsedData.program_days[0]?.workouts[0];
+        if (programWorkout && programWorkout.workout_exercises) {
+          const workoutExercises: WorkoutExercise[] = programWorkout.workout_exercises
+            .sort((a: any, b: any) => a.order_in_workout - b.order_in_workout)
+            .map((ex: any) => ({
+              id: ex.exercise_id,
+              name: ex.exercise_name,
+              sets: ex.sets,
+              reps: ex.reps,
+              weight: ex.weight || '',
+              rest: `${ex.rest_time || 60}`,
+              instructions: ex.notes || '',
+              completedSets: Array(ex.sets).fill(null).map(() => ({
+                reps: 0,
+                weight: 0,
+                completed: false,
+                restCompleted: false
+              }))
+            }));
+          
+          console.log('[ActiveWorkout] Workout exercises prepared:', workoutExercises);
+          setWorkout(workoutExercises);
+          setWorkoutStartTime(new Date());
+          return;
+        }
+      } catch (error) {
+        console.error('[ActiveWorkout] Error parsing program data:', error);
+      }
+    }
+
+    // Fallback: Simulation d'un entraînement (ancien système)
     const mockWorkout: WorkoutExercise[] = [
       {
         id: '1',
