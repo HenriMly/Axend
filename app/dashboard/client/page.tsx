@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useRequireClient } from '@/lib/auth-context';
-import { authService } from '@/lib/auth';
 import { dataService } from '@/lib/data';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
@@ -77,7 +76,6 @@ export default function ClientDashboard() {
 
   useEffect(() => {
     if (!loading && userProfile && isClient && userProfile.id && !dataLoaded) {
-      console.log('[ClientDashboard] Loading client data for:', userProfile.id);
       loadClientData();
     }
   }, [loading, userProfile?.id, isClient, dataLoaded]);
@@ -89,11 +87,9 @@ export default function ClientDashboard() {
     }
 
     try {
-      console.log('[loadClientData] Starting to load data for:', userProfile.id);
       setIsLoadingData(true);
       
       // Charger les données complètes du client (incluant les informations du coach)
-      console.log('[loadClientData] Loading complete client data...');
       const completeClientData = await dataService.getClientData(userProfile.id);
       
       // Mapper les données pour correspondre à l'interface attendue
@@ -103,30 +99,21 @@ export default function ClientDashboard() {
       };
       
       setClientData(mappedClientData as ClientData);
-      console.log('[loadClientData] Client data loaded, coach info:', mappedClientData.coach);
       
-      // Charger les programmes
-      console.log('[loadClientData] Loading programs...');
-      const clientPrograms = await dataService.getClientPrograms(userProfile.id);
+      // Charger les programmes, séances et mesures
+      const [clientPrograms, clientWorkouts, clientMeasurements] = await Promise.all([
+        dataService.getClientPrograms(userProfile.id),
+        dataService.getClientWorkouts(userProfile.id),
+        dataService.getClientMeasurements(userProfile.id)
+      ]);
+      
       setPrograms(clientPrograms || []);
-      console.log('[loadClientData] Programs loaded:', clientPrograms?.length || 0);
-      
-      // Charger les séances
-      console.log('[loadClientData] Loading workouts...');
-      const clientWorkouts = await dataService.getClientWorkouts(userProfile.id);
       setWorkouts(clientWorkouts || []);
-      console.log('[loadClientData] Workouts loaded:', clientWorkouts?.length || 0);
-      
-      // Charger les mesures
-      console.log('[loadClientData] Loading measurements...');
-      const clientMeasurements = await dataService.getClientMeasurements(userProfile.id);
       setMeasurements(clientMeasurements || []);
-      console.log('[loadClientData] Measurements loaded:', clientMeasurements?.length || 0);
       
     } catch (error) {
-      console.error('[loadClientData] Error loading client data:', error);
+      console.error('Error loading client data:', error);
     } finally {
-      console.log('[loadClientData] Data loading finished');
       setIsLoadingData(false);
       setDataLoaded(true);
     }
