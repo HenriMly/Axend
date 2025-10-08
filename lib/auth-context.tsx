@@ -109,10 +109,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
             if (!profile) {
               try {
-                await authService.ensureClientProfile(sessUser)
-                profile = await fetchUserProfile(sessUser.id)
+                console.log('[auth-context] Creating missing client profile...');
+                await authService.ensureClientProfile(sessUser);
+                profile = await fetchUserProfile(sessUser.id);
+                console.log('[auth-context] Client profile created:', profile);
               } catch (e) {
-                console.warn('[auth-context] ensureClientProfile failed:', e)
+                console.warn('[auth-context] ensureClientProfile failed:', e);
               }
             }
 
@@ -216,7 +218,7 @@ export function useAuth() {
 }
 
 // Hook pour protéger les routes
-export function useRequireAuth(redirectTo: string = '/auth/login') {
+export function useRequireAuth(redirectTo: string = '/') {
   const { user, userProfile, loading } = useAuth();
   const router = useRouter();
 
@@ -235,18 +237,29 @@ export function useRequireClient() {
   const router = useRouter();
 
   useEffect(() => {
+    console.log('[useRequireClient] State check:', { user: !!user, userProfile: !!userProfile, loading, role: userProfile?.role });
+    
     if (!loading && !user) {
-      router.push('/auth/login');
+      console.log('[useRequireClient] No user, redirecting to login');
+      router.push('/auth/client/login');
+      return;
     }
-  }, [user, loading, router]);
-
-  useEffect(() => {
+    
+    // Si on a un profil mais que c'est pas un client, rediriger
     if (!loading && userProfile && userProfile.role !== 'client') {
+      console.log('[useRequireClient] User is not a client, redirecting to coach dashboard');
       router.push('/dashboard/coach');
+      return;
     }
-  }, [userProfile, loading, router]);
+  }, [userProfile, loading, user, router]);
 
-  return { user, userProfile, loading, isClient: userProfile?.role === 'client', signOut };
+  return { 
+    user, 
+    userProfile, 
+    loading, // Just use the original loading state
+    isClient: userProfile?.role === 'client', 
+    signOut 
+  };
 }
 
 // Hook spécifique pour les coaches
@@ -256,7 +269,7 @@ export function useRequireCoach() {
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push('/auth/login');
+      router.push('/auth/coach/login');
     }
   }, [user, loading, router]);
 

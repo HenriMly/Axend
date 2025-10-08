@@ -42,18 +42,21 @@ export const authService = {
   async signUpClient(email: string, password: string, name: string, coachCode: string) {
     const normalizedEmail = normalizeEmail(email)
 
-    // Lookup coach
-    const { data: coach, error: coachErr } = await supabase
+    // Chercher le coach directement (RLS désactivé temporairement)
+    console.log('🔍 Recherche coach...');
+    const { data: coachData, error: coachErr } = await supabase
       .from('coaches')
-      .select('id, coach_code')
+      .select('id, name, coach_code')
       .eq('coach_code', coachCode)
-      .limit(1)
-      .single()
+      .single();
 
-    if (coachErr || !coach) {
-      console.error('[auth.signUpClient] coach lookup error', coachErr)
-      throw new Error('Code coach invalide')
+    if (coachErr || !coachData) {
+      console.error('[auth.signUpClient] coach lookup error', coachErr);
+      throw new Error('Code coach invalide');
     }
+
+    const coach = coachData;
+    console.log('🎯 Coach trouvé:', coach);
 
     try {
       const redirectTo = (typeof window !== 'undefined' ? window.location.origin : process.env.NEXT_PUBLIC_SITE_URL) || undefined
@@ -83,25 +86,25 @@ export const authService = {
         return signupData
       }
 
-      // Create client record (retry briefly if FK timing issue)
-      const maxAttempts = 3
-      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-        const { error: clientError } = await supabase.from('clients').insert({ id: signupData.user.id, coach_id: coach.id, name, email: normalizedEmail })
+      // Créer le client directement (RLS désactivé temporairement)
+      const { data: clientData, error: clientError } = await supabase
+        .from('clients')
+        .insert({
+          id: signupData.user.id,
+          name,
+          email: normalizedEmail,
+          coach_id: coach.id,
+          created_at: new Date().toISOString()
+        })
+        .select()
+        .single();
 
-        if (!clientError) break
-        const code = (clientError as any)?.code || ''
-        if (code === '23503' && attempt < maxAttempts) {
-          await new Promise((r) => setTimeout(r, 500 * attempt))
-          continue
-        }
-
-        try {
-          console.error('[auth.signUpClient] client insert error', JSON.stringify(clientError))
-        } catch (e) {
-          console.error('[auth.signUpClient] client insert error', clientError)
-        }
-        throw new Error(extractErrorMessage(clientError))
+      if (clientError) {
+        console.error('[auth.signUpClient] client creation error', clientError);
+        throw new Error('Erreur lors de la création du profil client');
       }
+
+      const createResult = { success: true, client: clientData };
 
       return signupData
     } catch (err) {
@@ -122,6 +125,70 @@ export const authService = {
       return data
     } catch (err) {
       console.error('[auth.signIn] unexpected:', err)
+      throw new Error(extractErrorMessage(err))
+    }
+  },
+
+  async signInCoach(email: string, password: string) {
+    const normalizedEmail = normalizeEmail(email)
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
+      if (error) {
+        const msg = extractErrorMessage(error)
+        console.error('[auth.signInCoach] supabase error:', error)
+        throw new Error(msg)
+      }
+
+      // Vérifier que l'utilisateur est bien un coach
+      if (data.user) {
+        const { data: coachProfile } = await supabase
+          .from('coaches')
+          .select('id, name')
+          .eq('id', data.user.id)
+          .single()
+
+        if (!coachProfile) {
+          // Déconnecter l'utilisateur s'il n'est pas un coach
+          await supabase.auth.signOut()
+          throw new Error('Ce compte n\'est pas un compte coach. Veuillez utiliser le formulaire client.')
+        }
+      }
+
+      return data
+    } catch (err) {
+      console.error('[auth.signInCoach] unexpected:', err)
+      throw new Error(extractErrorMessage(err))
+    }
+  },
+
+  async signInClient(email: string, password: string) {
+    const normalizedEmail = normalizeEmail(email)
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password })
+      if (error) {
+        const msg = extractErrorMessage(error)
+        console.error('[auth.signInClient] supabase error:', error)
+        throw new Error(msg)
+      }
+
+      // Vérifier que l'utilisateur est bien un client
+      if (data.user) {
+        const { data: clientProfile } = await supabase
+          .from('clients')
+          .select('id, name')
+          .eq('id', data.user.id)
+          .single()
+
+        if (!clientProfile) {
+          // Déconnecter l'utilisateur s'il n'est pas un client
+          await supabase.auth.signOut()
+          throw new Error('Ce compte n\'est pas un compte client. Veuillez utiliser le formulaire coach.')
+        }
+      }
+
+      return data
+    } catch (err) {
+      console.error('[auth.signInClient] unexpected:', err)
       throw new Error(extractErrorMessage(err))
     }
   },
@@ -147,8 +214,19 @@ export const authService = {
 
         const { data: clientSimple, error: clientSimpleErr } = await supabase.from('clients').select('*').eq('id', userId).single()
 
-        if (clientSimpleErr || !clientSimple) {
+        if (clientSimpleErr) {
+          // Si l'erreur est "0 rows" (PGRST116), c'est normal - l'utilisateur n'a pas de profil client
+          if (clientSimpleErr.code === 'PGRST116') {
+            console.info('[auth.getUserProfile] user has no client profile yet')
+            return null
+          }
+          // Autre erreur plus grave
           try { console.error('[auth.getUserProfile] client simple select failed', JSON.stringify(clientSimpleErr)) } catch (e) { console.error('[auth.getUserProfile] client simple select failed', clientSimpleErr) }
+          return null
+        }
+
+        if (!clientSimple) {
+          console.info('[auth.getUserProfile] no client data returned')
           return null
         }
 
@@ -183,22 +261,37 @@ export const authService = {
       // If user metadata contains coach_id, use it
       const coach_id = user.user_metadata?.coach_id || user.user_metadata?.coachId || null
 
-      // Build insert payload
+      // Build insert payload - coach_id peut être null
       const payload: any = {
         id: user.id,
-        coach_id: coach_id,
+        coach_id: coach_id, // peut être null, c'est OK 
         name: user.user_metadata?.name || user.user_metadata?.full_name || user.email || 'Client',
         email: user.email,
+        created_at: new Date().toISOString()
       }
 
+      console.log('[ensureClientProfile] Creating client with payload:', payload);
+
       // Try insert (handle unique/foreign key errors)
-      const { data: inserted, error: insertErr } = await supabase.from('clients').insert(payload)
+      const { data: inserted, error: insertErr } = await supabase.from('clients').insert(payload).select().single()
 
       if (insertErr) {
-        try { console.warn('[auth.ensureClientProfile] insertErr', JSON.stringify(insertErr)) } catch (e) { console.warn('[auth.ensureClientProfile] insertErr', insertErr) }
+        try { 
+          console.warn('[auth.ensureClientProfile] insertErr', JSON.stringify(insertErr)) 
+        } catch (e) { 
+          console.warn('[auth.ensureClientProfile] insertErr', insertErr) 
+        }
+        
+        // Si l'erreur est "déjà existe", c'est pas grave
+        if (insertErr.code === '23505') {
+          console.log('[ensureClientProfile] Client already exists, fetching...');
+          const { data: existingClient } = await supabase.from('clients').select('*').eq('id', user.id).single();
+          return existingClient;
+        }
         return null
       }
 
+      console.log('[ensureClientProfile] Client created successfully:', inserted);
       return inserted
     } catch (err) {
       console.error('[auth.ensureClientProfile] unexpected:', err)

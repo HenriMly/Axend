@@ -127,19 +127,18 @@ export default function CoachCodeHelper() {
           </h3>
           <div className="text-green-800 dark:text-green-200 space-y-2">
             <p>1. <strong>Copiez</strong> le code du coach de votre choix</p>
-            <p>2. <strong>Allez</strong> sur la page d&apos;inscription (/auth/register)</p>
-            <p>3. <strong>Sélectionnez</strong> "Client" comme rôle</p>
-            <p>4. <strong>Collez</strong> le code coach dans le champ prévu</p>
-            <p>5. <strong>Terminez</strong> votre inscription</p>
+            <p>2. <strong>Allez</strong> sur la page d&apos;inscription client</p>
+            <p>3. <strong>Collez</strong> le code coach dans le champ prévu</p>
+            <p>4. <strong>Terminez</strong> votre inscription</p>
           </div>
         </div>
 
         <div className="mt-6 text-center">
           <a
-            href="/auth/register"
-            className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-medium rounded-lg transition-all shadow-lg hover:shadow-xl"
+            href="/auth/client/register"
+            className="inline-flex items-center px-6 py-3 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 text-white font-medium rounded-lg transition-all shadow-lg hover:shadow-xl"
           >
-            🚀 Aller à l&apos;inscription
+            🚀 Inscription Client
             <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
             </svg>

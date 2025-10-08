@@ -108,19 +108,46 @@ export default function Home() {
                 </button>
               </div>
             ) : (
-              <div className="flex gap-3">
-                <Link
-                  href="/auth/login"
-                  className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
-                >
-                  Se connecter
-                </Link>
-                <Link
-                  href="/auth/register"
-                  className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-lg transition-all shadow-lg hover:shadow-xl"
-                >
-                  S'inscrire
-                </Link>
+              <div className="flex gap-2">
+                <div className="relative group">
+                  <button className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors">
+                    👨‍🏋️ Coach
+                  </button>
+                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                    <Link
+                      href="/auth/coach/login"
+                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-lg"
+                    >
+                      Se connecter
+                    </Link>
+                    <Link
+                      href="/auth/coach/register"
+                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-b-lg"
+                    >
+                      S'inscrire
+                    </Link>
+                  </div>
+                </div>
+                
+                <div className="relative group">
+                  <button className="px-4 py-2 text-sm font-medium text-white bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 rounded-lg transition-all shadow-lg hover:shadow-xl">
+                    💪 Client
+                  </button>
+                  <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">
+                    <Link
+                      href="/auth/client/login"
+                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-t-lg"
+                    >
+                      Se connecter
+                    </Link>
+                    <Link
+                      href="/auth/client/register"
+                      className="block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-b-lg"
+                    >
+                      S'inscrire
+                    </Link>
+                  </div>
+                </div>
               </div>
             )}
           </div>
@@ -262,19 +289,56 @@ export default function Home() {
               </p>
             </div>
             
-            <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-16">
-              <Link
-                href="/auth/register"
-                className="px-8 py-4 text-lg font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-xl transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-              >
-                Commencer maintenant
-              </Link>
-              <Link
-                href="/auth/login"
-                className="px-8 py-4 text-lg font-medium text-gray-700 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white border-2 border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 rounded-xl transition-all"
-              >
-                Se connecter
-              </Link>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-2xl mx-auto mb-16">
+              {/* Coach Section */}
+              <div className="bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 p-8 rounded-2xl border border-blue-200 dark:border-blue-800">
+                <div className="text-center mb-6">
+                  <div className="w-16 h-16 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span className="text-white text-2xl">👨‍🏋️</span>
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Coach</h3>
+                  <p className="text-gray-600 dark:text-gray-400">Gérez vos clients et créez des programmes personnalisés</p>
+                </div>
+                <div className="space-y-3">
+                  <Link
+                    href="/auth/coach/register"
+                    className="block w-full px-6 py-3 text-center font-medium text-white bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-lg transition-all shadow-lg hover:shadow-xl"
+                  >
+                    S'inscrire coach
+                  </Link>
+                  <Link
+                    href="/auth/coach/login"
+                    className="block w-full px-6 py-3 text-center font-medium text-blue-600 dark:text-blue-400 border-2 border-blue-600 dark:border-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-all"
+                  >
+                    Se connecter
+                  </Link>
+                </div>
+              </div>
+
+              {/* Client Section */}
+              <div className="bg-gradient-to-br from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 p-8 rounded-2xl border border-green-200 dark:border-green-800">
+                <div className="text-center mb-6">
+                  <div className="w-16 h-16 bg-gradient-to-r from-green-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <span className="text-white text-2xl">💪</span>
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">Client</h3>
+                  <p className="text-gray-600 dark:text-gray-400">Suivez vos programmes et progressez avec votre coach</p>
+                </div>
+                <div className="space-y-3">
+                  <Link
+                    href="/auth/client/register"
+                    className="block w-full px-6 py-3 text-center font-medium text-white bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 rounded-lg transition-all shadow-lg hover:shadow-xl"
+                  >
+                    S'inscrire client
+                  </Link>
+                  <Link
+                    href="/auth/client/login"
+                    className="block w-full px-6 py-3 text-center font-medium text-green-600 dark:text-green-400 border-2 border-green-600 dark:border-green-400 hover:bg-green-50 dark:hover:bg-green-900/20 rounded-lg transition-all"
+                  >
+                    Se connecter
+                  </Link>
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-4xl mx-auto">

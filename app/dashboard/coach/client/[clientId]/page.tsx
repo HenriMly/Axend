@@ -56,6 +56,7 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
   const router = useRouter();
   const [editingProgram, setEditingProgram] = useState<any | null>(null);
   const [creatingProgram, setCreatingProgram] = useState(false);
+  const [creatingGoal, setCreatingGoal] = useState(false);
   
   // Unwrap the params promise using React.use()
   const { clientId } = use(params);
@@ -202,6 +203,7 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
               { id: 'workouts', name: 'Entraînements', icon: '💪' },
               { id: 'progress', name: 'Évolution', icon: '📈' },
               { id: 'programs', name: 'Programmes', icon: '📋' },
+              { id: 'goals', name: 'Objectifs', icon: '🎯' },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -410,6 +412,89 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
             ))}
             <div>
               <button onClick={() => setCreatingProgram(true)} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg">Créer un programme</button>
+            </div>
+          </div>
+        )}
+
+        {activeTab === 'goals' && (
+          <div className="space-y-6">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700">
+              <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Objectifs actuels</h3>
+                  <button 
+                    onClick={() => setCreatingGoal(true)}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+                  >
+                    Définir objectif
+                  </button>
+                </div>
+              </div>
+              <div className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center">
+                        <span className="text-white text-sm">⚖️</span>
+                      </div>
+                      <h4 className="font-semibold text-gray-900 dark:text-white">Objectif de poids</h4>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 dark:text-gray-400">Poids actuel</span>
+                        <span className="font-medium text-gray-900 dark:text-white">{client.currentWeight}kg</span>
+                      </div>
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600 dark:text-gray-400">Objectif</span>
+                        <span className="font-medium text-gray-900 dark:text-white">{client.targetWeight}kg</span>
+                      </div>
+                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                        <div 
+                          className="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full transition-all duration-300"
+                          style={{
+                            width: `${Math.min(100, Math.abs((client.currentWeight - client.targetWeight) / client.targetWeight) * 100)}%`
+                          }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200 dark:border-green-800">
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                        <span className="text-white text-sm">💪</span>
+                      </div>
+                      <h4 className="font-semibold text-gray-900 dark:text-white">Objectif fitness</h4>
+                    </div>
+                    <div className="space-y-2 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Séances/semaine</span>
+                        <span className="font-medium text-gray-900 dark:text-white">3-4</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Durée moyenne</span>
+                        <span className="font-medium text-gray-900 dark:text-white">60 min</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-600 dark:text-gray-400">Cette semaine</span>
+                        <span className="font-medium text-green-600 dark:text-green-400">2/3 ✓</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
+                  <h5 className="font-medium text-gray-900 dark:text-white mb-3">Notes du coach</h5>
+                  <textarea
+                    placeholder="Ajoutez des notes personnalisées sur les objectifs de ce client..."
+                    className="w-full p-3 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    rows={3}
+                  />
+                  <button className="mt-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors">
+                    Sauvegarder les notes
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
