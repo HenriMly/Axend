@@ -91,4 +91,6 @@ Simplifier la gestion des programmes d'entraînement, le suivi des progrès et l
 
 **Axend - Transformez votre passion du fitness en succès digital** 🚀
 
+<img src="./public/axendfond.png" alt="Axend Logo" width="100">
+
 </div>
