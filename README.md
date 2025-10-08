@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Axend Logo](https://img.shields.io/badge/Axend-Fitness%20Platform-blue?style=for-the-badge&logo=dumbbell)
+![Axend Logo](./public/axendLogoFond.png)
 
 **La solution tout-en-un pour les coachs sportifs et leurs clients**
 
