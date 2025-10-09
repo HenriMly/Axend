@@ -147,6 +147,29 @@ export const dataService = {
     return data
   },
 
+  // Update client profile (coach or client updates)
+  async updateClient(clientId: string, updates: { target_weight?: number; current_weight?: number; age?: number; height?: number; [key: string]: any }) {
+    const payload: any = {};
+    if (typeof updates.target_weight !== 'undefined') payload.target_weight = updates.target_weight;
+    if (typeof updates.current_weight !== 'undefined') payload.current_weight = updates.current_weight;
+    if (typeof updates.age !== 'undefined') payload.age = updates.age;
+    if (typeof updates.height !== 'undefined') payload.height = updates.height;
+    // copy other fields directly if provided (be cautious)
+    Object.keys(updates).forEach(k => {
+      if (!['target_weight','current_weight','age','height'].includes(k)) payload[k] = updates[k];
+    });
+
+    const { data, error } = await supabase
+      .from('clients')
+      .update(payload)
+      .eq('id', clientId)
+      .select()
+      .single();
+
+    if (error) throw error;
+    return data;
+  },
+
   // ===== PROGRAM SERVICES =====
   
   // Create a new program
@@ -298,16 +321,21 @@ export const dataService = {
 
   // ===== WORKOUT SERVICES =====
   
-  // Create a workout session
+  // Create a workout session (stores in workout_sessions)
   async createWorkout(workoutData: {
     client_id: string
     program_id?: string
+    program_day_id?: string
+    template_workout_id?: string
+    program_name?: string
     date: string
-    duration?: number
+    duration_minutes?: number
+    exercises_count?: number
+    status?: string
     notes?: string
   }) {
     const { data, error } = await supabase
-      .from('workouts')
+      .from('workout_sessions')
       .insert(workoutData)
       .select()
       .single()
@@ -316,28 +344,52 @@ export const dataService = {
     return data
   },
 
-  // Get workouts for a client
-  async getClientWorkouts(clientId: string, limit?: number) {
-    let query = supabase
-      .from('workouts')
-      .select(`
-        *,
-        workout_exercises(
-          *,
-          workout_sets(*)
-        )
-      `)
-      .eq('client_id', clientId)
-      .order('date', { ascending: false })
+  // Update a workout session
+  async updateWorkout(workoutId: string, updates: { date?: string; duration?: number; notes?: string; status?: string; program_name?: string; exercises_count?: number }) {
+    const payload: any = {};
+    if (updates.date) payload.date = updates.date;
+    if (typeof updates.duration !== 'undefined') payload.duration_minutes = updates.duration;
+    if (typeof updates.notes !== 'undefined') payload.notes = updates.notes;
+    if (typeof updates.status !== 'undefined') payload.status = updates.status;
+    if (typeof updates.program_name !== 'undefined') payload.program_name = updates.program_name;
+    if (typeof updates.exercises_count !== 'undefined') payload.exercises_count = updates.exercises_count;
 
-    if (limit) {
-      query = query.limit(limit)
-    }
-
-    const { data, error } = await query
+    const { data, error } = await supabase
+      .from('workout_sessions')
+      .update(payload)
+      .eq('id', workoutId)
+      .select()
+      .single()
 
     if (error) throw error
     return data
+  },
+
+  // Get workout sessions for a client (with exercises aggregated)
+  async getClientWorkouts(clientId: string, limit?: number) {
+    let query = supabase
+      .from('v_workout_sessions_with_exercises')
+      .select('*')
+      .eq('client_id', clientId)
+      .order('date', { ascending: false })
+
+    if (limit) query = query.limit(limit)
+
+    const { data, error } = await query
+    if (error) throw error
+    return data
+  },
+
+  // Get goals for a client
+  async getClientGoals(clientId: string) {
+    const { data, error } = await supabase
+      .from('client_goals')
+      .select('*')
+      .eq('client_id', clientId)
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    return data;
   },
 
   // Complete a workout

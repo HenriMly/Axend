@@ -309,9 +309,10 @@ export default function CoachDashboard() {
           <div className="p-6">
             <div className="grid gap-4">
               {coach.clients.map((client) => (
-                <div
+                <Link
                   key={client.id}
-                  className="p-6 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-lg transition-all"
+                  href={`/dashboard/coach/client/${client.id}`}
+                  className="p-6 border border-gray-200 dark:border-gray-700 rounded-xl hover:shadow-lg transition-all block"
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-4">
@@ -361,35 +362,9 @@ export default function CoachDashboard() {
                       </div>
                     </div>
                     
-                    {/* Actions rapides */}
-                    <div className="flex space-x-2">
-                      <Link
-                        href={`/dashboard/coach/client/${client.id}`}
-                        className="px-3 py-1 text-sm font-medium text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-300 rounded-md transition-colors"
-                      >
-                        Voir détails
-                      </Link>
-                      <button 
-                        onClick={() => {
-                          // Action rapide: créer un programme
-                          router.push(`/dashboard/coach/client/${client.id}?tab=programs&action=create`);
-                        }}
-                        className="px-3 py-1 text-sm font-medium text-green-600 hover:text-green-700 border border-green-200 hover:border-green-300 rounded-md transition-colors"
-                      >
-                        Nouveau programme
-                      </button>
-                      <button 
-                        onClick={() => {
-                          // Action rapide: ajouter une mesure
-                          router.push(`/dashboard/coach/client/${client.id}?tab=progress&action=measure`);
-                        }}
-                        className="px-3 py-1 text-sm font-medium text-purple-600 hover:text-purple-700 border border-purple-200 hover:border-purple-300 rounded-md transition-colors"
-                      >
-                        Ajouter mesure
-                      </button>
-                    </div>
+                    {/* Card is clickable; actions removed to make whole card navigable */}
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
           </div>

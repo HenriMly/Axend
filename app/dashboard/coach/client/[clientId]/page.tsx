@@ -48,6 +48,25 @@ interface Measurement {
   muscle?: number;
 }
 
+interface ProgramDetail {
+  id: string;
+  name: string;
+  description?: string;
+  weeks?: number;
+  goal?: string;
+  program_days?: Array<{
+    day_of_week: number;
+    day_name?: string;
+    is_rest_day: boolean;
+    workouts?: Array<{
+      id?: string;
+      name: string;
+      time_slot?: string;
+      estimated_duration?: number;
+    }>;
+  }>;
+}
+
 export default function ClientDetail({ params }: { params: Promise<{ clientId: string }> }) {
   const { user, userProfile } = useRequireCoach();
   const [client, setClient] = useState<Client | null>(null);
@@ -58,9 +77,53 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
   const [editingProgram, setEditingProgram] = useState<any | null>(null);
   const [creatingProgram, setCreatingProgram] = useState(false);
   const [creatingGoal, setCreatingGoal] = useState(false);
+  const [goalValue, setGoalValue] = useState<string>('');
+  const [editingGoal, setEditingGoal] = useState<any | null>(null);
+  const [showNewGoal, setShowNewGoal] = useState(false);
+  const [deletingGoalId, setDeletingGoalId] = useState<string | null>(null);
+  const [deletingMeasurementDate, setDeletingMeasurementDate] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ type: 'success' | 'error' | 'info'; text: string } | null>(null);
   const [addingMeasurement, setAddingMeasurement] = useState(false);
   const [addingWorkout, setAddingWorkout] = useState(false);
   const [workoutSessions, setWorkoutSessions] = useState<any[]>([]);
+  // Keep the client.workouts preview in sync with persisted/local workout sessions
+  // NOTE: avoid including `client` in deps to prevent update cycles — only run when workoutSessions changes
+  useEffect(() => {
+    if (!client) return;
+    setClient(prev => {
+      if (!prev) return prev;
+      // If workouts appear identical (same length and same ids/dates), avoid updating to prevent re-render loop
+      try {
+        const a = prev.workouts || [];
+        const b = workoutSessions || [];
+        if (Array.isArray(a) && Array.isArray(b) && a.length === b.length) {
+          let same = true;
+          for (let i = 0; i < a.length; i++) {
+            if (!a[i] || !b[i] || String(a[i].id) !== String(b[i].id) || String(a[i].date) !== String(b[i].date)) { same = false; break; }
+          }
+          if (same) return prev;
+        }
+      } catch (e) {
+        // ignore and fallback to updating
+      }
+      return { ...prev, workouts: workoutSessions };
+    });
+  }, [workoutSessions]);
+  const [programDetails, setProgramDetails] = useState<ProgramDetail[]>([]);
+  const [clientGoals, setClientGoals] = useState<any[]>([]);
+  const [selectedProgramIndex, setSelectedProgramIndex] = useState<number>(0);
+  // Week selector (start at Monday of current week)
+  const [selectedWeekStart, setSelectedWeekStart] = useState<Date>(() => {
+    const d = new Date();
+    const day = d.getDay();
+    const diff = (day === 0 ? -6 : 1) - day; // if Sunday (0) -> go back 6 days, else set to Monday
+    const monday = new Date(d);
+    monday.setDate(d.getDate() + diff);
+    monday.setHours(0,0,0,0);
+    return monday;
+  });
+  const [editingWorkout, setEditingWorkout] = useState<any | null>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
   
   // Unwrap the params promise using React.use()
   const { clientId } = use(params);
@@ -93,6 +156,46 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
         };
 
         setClient(mapped);
+
+        // Load persisted workouts if available
+        try {
+          const persisted = await dataService.getClientWorkouts(clientId, 50);
+          // Map persisted shape to local UI shape
+          const mappedWorkouts = (persisted || []).map((w: any) => ({
+            id: w.id,
+            date: w.date,
+            program: w.program_name || w.program || w.name || '',
+            duration: w.duration_minutes || w.estimated_duration || 0,
+            exercises: (w.exercises && w.exercises.length) || w.exercises_count || 0,
+            notes: w.notes || '',
+            status: w.status || 'completed'
+          }));
+          if (mounted) setWorkoutSessions(mappedWorkouts);
+        } catch (workoutErr) {
+          console.debug('[ClientDetail] No persisted workouts or query failed', workoutErr);
+        }
+
+        // Try to load detailed programs (advanced structure) for the client
+        try {
+          const progDetails = await dataService.getClientProgramsAdvanced(clientId);
+          if (mounted) setProgramDetails(progDetails || []);
+        } catch (e) {
+          // fallback: try the simpler programs endpoint if advanced not available
+          try {
+            const simple = await dataService.getClientPrograms(clientId);
+            if (mounted) setProgramDetails(simple || []);
+          } catch (err) {
+            console.debug('No program details available', err);
+          }
+        }
+
+        // Load client goals
+        try {
+          const goals = await dataService.getClientGoals(clientId);
+          if (mounted) setClientGoals(goals || []);
+        } catch (gErr) {
+          console.debug('Failed to load client goals', gErr);
+        }
       } catch (err) {
         console.error('Failed to load client detail', err);
         // if not found or not authorized, navigate back
@@ -135,6 +238,87 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
       router.replace(`/dashboard/coach/client/${clientId}`, { scroll: false });
     }
   }, [client, isLoading, searchParams, clientId, router]);
+
+  // Helper: get earliest measurement weight (by date) if available
+  const getEarliestMeasurementWeight = (measurements: Measurement[] | undefined) => {
+    if (!measurements || measurements.length === 0) return null;
+    try {
+      let earliest = measurements[0];
+      for (const m of measurements) {
+        if (new Date(m.date) < new Date(earliest.date)) earliest = m;
+      }
+      return earliest.weight;
+    } catch (e) {
+      return measurements[0].weight;
+    }
+  };
+
+  // Compute progress for a given goal. Returns { percent, current, initial, target } or null if not computable
+  const computeGoalProgress = (g: any) => {
+    if (!g || g.target_value == null) return null;
+    const target = Number(g.target_value);
+    if (isNaN(target)) return null;
+
+    // Weight-based heuristic: unit 'kg' or title mentions poids
+    const isWeightGoal = (g.unit && String(g.unit).toLowerCase().includes('kg')) || /poids|weight/i.test(String(g.title || '')) || (g.goal_type === 'weight');
+
+    if (isWeightGoal) {
+      // Determine initial (earliest) and current (latest) from measurements by date if available
+      let initial: number | null = null;
+      let current: number | null = null;
+      try {
+        const ms = client?.measurements || [];
+        if (ms.length > 0) {
+          let earliest = ms[0];
+          let latest = ms[0];
+          for (const m of ms) {
+            const d = new Date(m.date);
+            if (d < new Date(earliest.date)) earliest = m;
+            if (d > new Date(latest.date)) latest = m;
+          }
+          initial = earliest.weight;
+          current = latest.weight;
+        }
+      } catch (e) {
+        // fallback to helper
+        initial = getEarliestMeasurementWeight(client?.measurements);
+      }
+
+      // Fallbacks
+      if (initial == null) initial = client?.currentWeight ?? target;
+      if (current == null) current = client?.currentWeight ?? initial;
+
+      // If initial === target, consider progress completed only if current equals target
+      if (initial === target) return { percent: current === target ? 100 : 0, current, initial, target };
+
+      // percent formula that works for both loss (target < initial) and gain (target > initial)
+      const raw = ((current - initial) / (target - initial)) * 100;
+      const percent = Math.round(Math.max(0, Math.min(100, raw)));
+      return { percent, current, initial, target };
+    }
+
+    // Generic numeric goals: try to derive from measurements if a matching unit/key exists — not implemented yet
+    return null;
+  };
+
+  // Derive an active weight goal (if any) and progress for the quick cards
+  const weightGoal = clientGoals.find((g: any) => (
+    (g.unit && String(g.unit).toLowerCase().includes('kg')) || /poids|weight/i.test(String(g.title || '')) || g.goal_type === 'weight'
+  ));
+  const progressForWeight = weightGoal ? computeGoalProgress(weightGoal) : null;
+  // choose latest measurement weight if available for display
+  const latestMeasurementWeight = (() => {
+    try {
+      const ms = client?.measurements || [];
+      if (ms.length === 0) return null;
+      let latest = ms[0];
+      for (const m of ms) if (new Date(m.date) > new Date(latest.date)) latest = m;
+      return latest.weight;
+    } catch (e) { return null; }
+  })();
+  const currentWeightDisplayed = progressForWeight ? progressForWeight.current : (latestMeasurementWeight ?? client?.currentWeight ?? 0);
+  const targetWeightDisplayed = progressForWeight ? progressForWeight.target : (weightGoal ? Number(weightGoal.target_value) : client?.targetWeight ?? 0);
+  const weightPercent = progressForWeight ? progressForWeight.percent : (targetWeightDisplayed ? Math.round(Math.min(100, Math.abs((currentWeightDisplayed - targetWeightDisplayed) / (targetWeightDisplayed || 1) * 100))) : 0);
 
   if (isLoading) {
     return (
@@ -192,11 +376,11 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
             <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900 dark:text-white">{client.currentWeight}kg</div>
+              <div className="text-2xl font-bold text-gray-900 dark:text-white">{currentWeightDisplayed}kg</div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Poids actuel</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900 dark:text-white">{client.targetWeight}kg</div>
+              <div className="text-2xl font-bold text-gray-900 dark:text-white">{targetWeightDisplayed}kg</div>
               <div className="text-sm text-gray-600 dark:text-gray-400">Objectif</div>
             </div>
             <div className="text-center">
@@ -249,21 +433,61 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Derniers entraînements</h3>
               </div>
               <div className="p-6 space-y-4">
-                {client.workouts.slice(0, 3).map((workout) => (
-                  <div key={workout.id} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                    <div>
-                      <div className="font-medium text-gray-900 dark:text-white">{workout.program}</div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
-                        {new Date(workout.date).toLocaleDateString('fr-FR')} • {workout.duration}min
+                {client.workouts.slice(0, 3).map((workout) => {
+                  // defensive exercises count: sometimes exercises is a number (count) or an array
+                  const exercisesCount = Array.isArray(workout.exercises) ? workout.exercises.length : (typeof workout.exercises === 'number' ? workout.exercises : 0);
+                  // truncated notes preview
+                  const notesPreview = workout.notes ? (String(workout.notes).length > 80 ? String(workout.notes).slice(0, 77) + '...' : String(workout.notes)) : '';
+
+                  return (
+                    <div key={workout.id || `${workout.date}-${workout.program}`} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                      <div>
+                        <div className="font-medium text-gray-900 dark:text-white">{workout.program}</div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">
+                          {new Date(workout.date).toLocaleDateString('fr-FR')} • {workout.duration}min
+                        </div>
+                        {notesPreview && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Notes: {notesPreview}</div>}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-medium text-gray-900 dark:text-white">
+                          {exercisesCount} exercice(s)
+                        </div>
+                        <div className="mt-2 space-x-2">
+                          <button onClick={() => {
+                            // try to find corresponding index in workoutSessions to allow editing
+                            const idx = workoutSessions.findIndex(s => s.id && workout.id && String(s.id) === String(workout.id));
+                            setEditingIndex(idx >= 0 ? idx : null);
+                            setEditingWorkout(workout);
+                          }} className="text-sm text-blue-600 hover:underline mr-2">Éditer</button>
+                          <button onClick={async () => {
+                            if (!confirm('Supprimer cette séance ?')) return;
+                            try {
+                              if (workout.id) {
+                                const res = await fetch('/api/workout-sessions', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: workout.id }) });
+                                const j = await res.json();
+                                if (!res.ok) {
+                                  console.error('Failed to delete session', j);
+                                  alert('Impossible de supprimer la séance');
+                                  return;
+                                }
+                                // remove from both workoutSessions and client.workouts
+                                setWorkoutSessions(prev => prev.filter(s => String(s.id) !== String(workout.id)));
+                                setClient(prev => prev ? { ...prev, workouts: (prev.workouts || []).filter(w => String(w.id) !== String(workout.id)) } : prev);
+                              } else {
+                                // local-only: remove from UI by matching date/program
+                                setWorkoutSessions(prev => prev.filter(s => !(s.date === workout.date && s.program === workout.program && s.duration === workout.duration)));
+                                setClient(prev => prev ? { ...prev, workouts: (prev.workouts || []).filter(w => !(w.date === workout.date && w.program === workout.program && w.duration === workout.duration)) } : prev);
+                              }
+                            } catch (e) {
+                              console.error('Delete request failed', e);
+                              alert('Erreur lors de la suppression');
+                            }
+                          }} className="text-sm text-red-600 hover:underline">Supprimer</button>
+                        </div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-sm font-medium text-gray-900 dark:text-white">
-                        {workout.exercises.length} exercices
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -289,104 +513,126 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
           </div>
         )}
 
-        {activeTab === 'workouts' && (
-          <div className="space-y-6">
-            {client.workouts.map((workout) => (
-              <div key={workout.id} className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700">
-                <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{workout.program}</h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400">
-                        {new Date(workout.date).toLocaleDateString('fr-FR')} • {workout.duration}min
-                      </p>
-                    </div>
-                  </div>
-                </div>
-                <div className="p-6">
-                  <div className="space-y-4">
-                    {workout.exercises.map((exercise, index) => (
-                      <div key={index} className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
-                        <h4 className="font-medium text-gray-900 dark:text-white mb-3">{exercise.name}</h4>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-sm">
-                          {exercise.sets.map((set, setIndex) => (
-                            <div key={setIndex} className="bg-gray-50 dark:bg-gray-700 p-2 rounded">
-                              {set.weight > 0 ? (
-                                <span className="text-gray-900 dark:text-white">
-                                  {set.reps} reps × {set.weight}kg
-                                </span>
-                              ) : (
-                                <span className="text-gray-900 dark:text-white">
-                                  {workout.duration}min
-                                </span>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                  {workout.notes && (
-                    <div className="mt-4 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                      <p className="text-sm text-blue-800 dark:text-blue-300">
-                        <strong>Notes:</strong> {workout.notes}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+        {/* Detailed per-workout exercises view removed — keep scheduled sessions and history below */}
 
         {activeTab === 'workouts' && (
           <div className="space-y-6">
             {/* Séances programmées cette semaine */}
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700">
-              <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">📅 Séances programmées cette semaine</h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Planning d'entraînement du client</p>
-              </div>
-              <div className="p-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                  {['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'].map((day, index) => {
-                    const dayNumber = index + 1;
-                    const isToday = new Date().getDay() === (index === 6 ? 0 : index + 1);
-                    
-                    return (
-                      <div key={day} className={`p-4 rounded-lg border-2 ${
-                        isToday 
-                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
-                          : 'border-gray-200 dark:border-gray-600'
-                      }`}>
-                        <div className="flex items-center justify-between mb-3">
-                          <h4 className={`font-medium ${
-                            isToday ? 'text-blue-700 dark:text-blue-300' : 'text-gray-900 dark:text-white'
-                          }`}>
-                            {day} {isToday && '(Aujourd\'hui)'}
-                          </h4>
-                          <div className={`w-3 h-3 rounded-full ${
-                            isToday ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'
-                          }`}></div>
-                        </div>
-                        
-                        {/* Afficher les séances des programmes créés */}
-                        {dayNumber === 7 ? (
-                          <div className="text-center py-4">
-                            <div className="text-2xl mb-2">🧘‍♂️</div>
-                            <div className="text-sm text-gray-600 dark:text-gray-400">Jour de repos</div>
-                          </div>
-                        ) : (
-                          <div className="text-center py-4">
-                            <div className="text-sm text-gray-500 dark:text-gray-400">
-                              Créez un programme pour voir les séances planifiées
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
+              <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900 dark:text-white">📅 Séances programmées</h3>
+                    <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Filtrer par semaine</p>
+                  </div>
+                  <div className="flex items-center space-x-3">
+                    <button onClick={() => {
+                      const prev = new Date(selectedWeekStart);
+                      prev.setDate(prev.getDate() - 7);
+                      setSelectedWeekStart(prev);
+                    }} className="px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded">← Semaine précédente</button>
+                    <div className="text-sm text-gray-700 dark:text-gray-300">
+                      {(() => { const start = selectedWeekStart; const end = new Date(start); end.setDate(start.getDate() + 6); return `${start.toLocaleDateString('fr-FR')} — ${end.toLocaleDateString('fr-FR')}` })()}
+                    </div>
+                    <button onClick={() => {
+                      const next = new Date(selectedWeekStart);
+                      next.setDate(next.getDate() + 7);
+                      setSelectedWeekStart(next);
+                    }} className="px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded">Semaine suivante →</button>
+                  </div>
                 </div>
+              <div className="p-6">
+                {programDetails && programDetails.length > 0 ? (
+                  <div>
+                    <div className="mb-4 flex items-center justify-between">
+                      <div className="text-sm text-gray-600 dark:text-gray-400">Afficher le programme :</div>
+                      <select
+                        value={selectedProgramIndex}
+                        onChange={(e) => setSelectedProgramIndex(parseInt(e.target.value))}
+                        className="px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      >
+                        {programDetails.map((p, i) => (
+                          <option key={p.id || i} value={i}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                      {(() => {
+                        const prog = programDetails[selectedProgramIndex];
+                        const days = prog?.program_days || [];
+                        const daysOfWeek = ['Lundi','Mardi','Mercredi','Jeudi','Vendredi','Samedi','Dimanche'];
+                        return daysOfWeek.map((dayName, idx) => {
+                          const dayObj = days.find(d => d.day_of_week === idx+1);
+                          const workouts = dayObj?.workouts || [];
+                          const isRest = dayObj ? !!dayObj.is_rest_day : true;
+                          const date = new Date(selectedWeekStart);
+                          date.setDate(selectedWeekStart.getDate() + idx);
+                          const isToday = new Date().toDateString() === date.toDateString();
+                          return (
+                            <div key={dayName} className={`p-4 rounded-lg border-2 ${isToday ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' : 'border-gray-200 dark:border-gray-600'}`}>
+                              <div className="flex items-center justify-between mb-3">
+                                <h4 className={`font-medium ${isToday ? 'text-blue-700 dark:text-blue-300' : 'text-gray-900 dark:text-white'}`}>
+                                  {dayName} {isToday && '(Aujourd\'hui)'}
+                                </h4>
+                                <div className={`w-3 h-3 rounded-full ${isToday ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-600'}`}></div>
+                              </div>
+                              {isRest ? (
+                                <div className="text-center py-4">
+                                  <div className="text-2xl mb-2">🧘‍♂️</div>
+                                  <div className="text-sm text-gray-600 dark:text-gray-400">Jour de repos</div>
+                                </div>
+                              ) : (
+                                <div className="space-y-2">
+                                  {workouts.length === 0 ? (
+                                    <div className="text-sm text-gray-500 dark:text-gray-400">Aucune séance programmée</div>
+                                  ) : (
+                                    workouts.map((w, wi) => (
+                                      <div
+                                        key={wi}
+                                        role="button"
+                                        tabIndex={0}
+                                        onClick={() => {
+                                          // Open edit modal prefilled with this scheduled session
+                                          const dateIso = date.toISOString().split('T')[0];
+                                          const wAny: any = w;
+                                          setEditingWorkout({
+                                            id: null,
+                                            date: dateIso,
+                                            program: wAny.name,
+                                            duration: wAny.estimated_duration || 60,
+                                            exercises: (wAny.workout_exercises && wAny.workout_exercises.length) || wAny.exercises_count || 0,
+                                            status: 'completed',
+                                            notes: ''
+                                          });
+                                          setEditingIndex(null);
+                                        }}
+                                        className="p-3 bg-gray-50 dark:bg-gray-700 rounded cursor-pointer hover:shadow-md"
+                                      >
+                                        <div className="flex items-center justify-between">
+                                          <div className="font-medium text-gray-900 dark:text-white">{w.name}</div>
+                                          <div className="text-sm text-gray-600 dark:text-gray-400">{w.time_slot || ''} • {w.estimated_duration || 0} min</div>
+                                        </div>
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })
+                      })()}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                    {['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'].map((day, index) => (
+                      <div key={index} className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-4">
+                        <div className="font-medium text-gray-900 dark:text-white">{day}</div>
+                        <div className="text-gray-500 dark:text-gray-400">Aucune séance programmée</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -408,6 +654,7 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                 {addingWorkout ? (
                   <WorkoutForm 
                     clientId={clientId}
+                    programs={client.programs}
                     onCancel={() => setAddingWorkout(false)}
                     onSaved={(workout) => {
                       setWorkoutSessions([...workoutSessions, workout]);
@@ -431,7 +678,7 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                             </div>
                           </div>
                         </div>
-                        <div className="text-right">
+                        <div className="text-right space-y-2">
                           {session.status === 'completed' ? (
                             <div className="text-sm font-medium text-green-600 dark:text-green-400">
                               ✓ {session.duration} min
@@ -441,6 +688,26 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                               ✗ Non effectuée
                             </div>
                           )}
+                          <div>
+                            <button onClick={() => { setEditingIndex(index); setEditingWorkout(session); }} className="text-sm text-blue-600 hover:underline mr-3">Éditer</button>
+                            <button onClick={async () => {
+                              if (!confirm('Supprimer cette séance ?')) return;
+                              try {
+                                const res = await fetch('/api/workout-sessions', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: session.id }) });
+                                const j = await res.json();
+                                if (!res.ok) {
+                                  console.error('Failed to delete session', j);
+                                  alert('Impossible de supprimer la séance');
+                                  return;
+                                }
+                                // remove from UI
+                                setWorkoutSessions(prev => prev.filter((_, i) => i !== index && _.id !== session.id));
+                              } catch (e) {
+                                console.error('Delete request failed', e);
+                                alert('Erreur lors de la suppression');
+                              }
+                            }} className="text-sm text-red-600 hover:underline">Supprimer</button>
+                          </div>
                         </div>
                       </div>
                     ))}
@@ -535,6 +802,10 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                         </div>
                       </div>
                       <div className="text-right">
+                        <div className="flex items-center space-x-3">
+                          <button onClick={() => setDeletingMeasurementDate(measurement.date)} className="text-sm text-red-600 hover:underline">Supprimer</button>
+                        </div>
+                        <div className="mt-2">
                         {index > 0 && (
                           <div className={`text-sm font-medium ${
                             measurement.weight < client.measurements[index - 1].weight
@@ -548,10 +819,54 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                             {Math.abs(measurement.weight - client.measurements[index - 1].weight).toFixed(1)}kg
                           </div>
                         )}
+                        </div>
                       </div>
                     </div>
                   ))}
                 </div>
+              </div>
+            </div>
+            {/* Goals progress block */}
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700">
+              <div className="p-6 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Progression des objectifs</h3>
+                <div className="text-sm text-gray-500">Mis à jour automatiquement</div>
+              </div>
+              <div className="p-6 space-y-4">
+                {clientGoals.length === 0 ? (
+                  <div className="text-sm text-gray-600">Aucun objectif configuré pour ce client.</div>
+                ) : (
+                  clientGoals.map((g) => {
+                    const p = computeGoalProgress(g);
+                    return (
+                      <div key={g.id} className="p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <div className="font-medium text-gray-900 dark:text-white">{g.title}</div>
+                            <div className="text-xs text-gray-500">Cible: {g.target_value}{g.unit ? ` ${g.unit}` : ''}{g.deadline ? ` • date limite: ${new Date(g.deadline).toLocaleDateString('fr-FR')}` : ''}</div>
+                          </div>
+                          <div className="text-right">
+                            {p ? (
+                              <div className="text-sm font-medium text-gray-900 dark:text-white">{p.percent}%</div>
+                            ) : (
+                              <div className="text-sm text-gray-500">Pas de métrique</div>
+                            )}
+                          </div>
+                        </div>
+                        {p ? (
+                          <div className="mt-3">
+                            <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-3">
+                              <div className="bg-gradient-to-r from-green-400 to-blue-500 h-3 rounded-full transition-all" style={{ width: `${p.percent}%` }}></div>
+                            </div>
+                            <div className="text-xs text-gray-500 mt-1">Départ: {p.initial} • Actuel: {p.current} • Cible: {p.target}</div>
+                          </div>
+                        ) : (
+                          <div className="mt-3 text-sm text-gray-500">Impossible de calculer la progression pour cet objectif automatiquement.</div>
+                        )}
+                      </div>
+                    )
+                  })
+                )}
               </div>
             </div>
           </div>
@@ -643,7 +958,19 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Objectifs actuels</h3>
                   <button 
-                    onClick={() => setCreatingGoal(true)}
+                    onClick={() => {
+                      // If a weightGoal exists, prefill value from it, otherwise from client's targetWeight
+                      const wg = weightGoal;
+                      if (wg && wg.target_value != null) {
+                        setGoalValue(String(wg.target_value));
+                        setEditingGoal(wg);
+                      } else {
+                        setGoalValue(String(client?.targetWeight || ''));
+                        setEditingGoal(null);
+                      }
+                      setCreatingGoal(true);
+                      setMessage(null);
+                    }}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
                   >
                     Définir objectif
@@ -659,24 +986,24 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                       </div>
                       <h4 className="font-semibold text-gray-900 dark:text-white">Objectif de poids</h4>
                     </div>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600 dark:text-gray-400">Poids actuel</span>
-                        <span className="font-medium text-gray-900 dark:text-white">{client.currentWeight}kg</span>
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600 dark:text-gray-400">Poids actuel</span>
+                          <span className="font-medium text-gray-900 dark:text-white">{currentWeightDisplayed}kg</span>
+                        </div>
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600 dark:text-gray-400">Objectif</span>
+                          <span className="font-medium text-gray-900 dark:text-white">{targetWeightDisplayed}kg</span>
+                        </div>
+                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                          <div 
+                            className="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full transition-all duration-300"
+                            style={{
+                              width: `${weightPercent}%`
+                            }}
+                          ></div>
+                        </div>
                       </div>
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-600 dark:text-gray-400">Objectif</span>
-                        <span className="font-medium text-gray-900 dark:text-white">{client.targetWeight}kg</span>
-                      </div>
-                      <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                        <div 
-                          className="bg-gradient-to-r from-blue-500 to-indigo-500 h-2 rounded-full transition-all duration-300"
-                          style={{
-                            width: `${Math.min(100, Math.abs((client.currentWeight - client.targetWeight) / client.targetWeight) * 100)}%`
-                          }}
-                        ></div>
-                      </div>
-                    </div>
                   </div>
 
                   <div className="p-4 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl border border-green-200 dark:border-green-800">
@@ -703,7 +1030,7 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                   </div>
                 </div>
 
-                <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
+                  <div className="mt-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-xl">
                   <h5 className="font-medium text-gray-900 dark:text-white mb-3">Notes du coach</h5>
                   <textarea
                     placeholder="Ajoutez des notes personnalisées sur les objectifs de ce client..."
@@ -714,10 +1041,185 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                     Sauvegarder les notes
                   </button>
                 </div>
+
+                {/* Goals list header */}
+                <div className="mt-6 flex items-center justify-between">
+                  <h4 className="text-md font-semibold">Objectifs du client</h4>
+                  <div>
+                    <button onClick={() => { setEditingGoal(null); setShowNewGoal(true); setMessage(null); }} className="px-3 py-1 bg-green-600 text-white rounded">+ Ajouter objectif</button>
+                  </div>
+                </div>
+                <div className="mt-3">
+                  {clientGoals.length === 0 ? (
+                    <div className="text-sm text-gray-600">Aucun objectif pour le moment</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {clientGoals.map((g) => (
+                        <div key={g.id} className="p-3 bg-white dark:bg-gray-800 border rounded flex justify-between items-start">
+                          <div>
+                            <div className="font-medium text-gray-900 dark:text-white">{g.title} {g.target_value ? `— ${g.target_value}${g.unit ? ' ' + g.unit : ''}` : ''}</div>
+                            {g.deadline && <div className="text-xs text-gray-500">Deadline: {new Date(g.deadline).toLocaleDateString('fr-FR')}</div>}
+                            {g.notes && <div className="text-sm text-gray-600 mt-1">{g.notes}</div>}
+                          </div>
+                          <div className="text-right space-y-2">
+                            <button onClick={() => { setEditingGoal(g); setShowNewGoal(true); setMessage(null); }} className="text-sm text-blue-600 hover:underline mr-2">Éditer</button>
+                            <button onClick={() => { setDeletingGoalId(g.id); setMessage(null); }} className="text-sm text-red-600 hover:underline">Supprimer</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         )}
+
+      {/* Goal modal */}
+      {creatingGoal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-sm">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Définir l'objectif de poids</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Objectif (kg)</label>
+                <input type="number" step="0.1" value={goalValue} onChange={(e) => setGoalValue(e.target.value)} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" />
+              </div>
+              <div className="flex justify-end space-x-3">
+                <button onClick={() => setCreatingGoal(false)} className="px-4 py-2 bg-gray-200 rounded">Annuler</button>
+                <button onClick={async () => {
+                  const parsed = parseFloat(goalValue);
+                  if (isNaN(parsed) || parsed <= 0) { setMessage({ type: 'error', text: 'Entrez un poids valide' }); return; }
+                  // First, update the client's target_weight (keep existing behavior)
+                  try {
+                    const updated = await dataService.updateClient(client!.id, { target_weight: parsed });
+                    setClient(prev => prev ? { ...prev, targetWeight: updated.target_weight || parsed } : prev);
+                  } catch (e) {
+                    console.error('Failed to update client target_weight', e);
+                    setMessage({ type: 'error', text: 'Impossible de mettre à jour l\'objectif sur le client' });
+                    // continue to try to persist goal row
+                  }
+
+                  // Then create or update a weight goal in client_goals so the Goals system and Progress stay in sync
+                  try {
+                    if (weightGoal && weightGoal.id) {
+                      const res = await fetch('/api/client-goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'update', payload: { id: weightGoal.id, target_value: parsed, unit: 'kg', coach_id: userProfile!.id } }) });
+                      const j = await res.json();
+                      if (!res.ok) { throw j; }
+                      setClientGoals(prev => prev.map(g => g.id === j.data.id ? j.data : g));
+                    } else {
+                      const payload: any = { client_id: client!.id, coach_id: userProfile!.id, title: 'Objectif de poids', goal_type: 'weight', target_value: parsed, unit: 'kg', status: 'active' };
+                      const res = await fetch('/api/client-goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', payload }) });
+                      const j = await res.json();
+                      if (!res.ok) { throw j; }
+                      setClientGoals(prev => [j.data, ...prev]);
+                    }
+                    setMessage({ type: 'success', text: 'Objectif de poids enregistré' });
+                    setCreatingGoal(false);
+                  } catch (e) {
+                    console.error('Failed to create/update weight goal', e);
+                    setMessage({ type: 'error', text: 'Erreur lors de la sauvegarde de l\'objectif' });
+                    // keep the modal open so the coach can retry
+                  }
+                }} className="px-4 py-2 bg-blue-600 text-white rounded">Enregistrer</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Goals Manager Modal (create/edit) */}
+      {showNewGoal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-lg">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{editingGoal ? 'Modifier l\'objectif' : 'Nouveau objectif'}</h3>
+            {message && (
+              <div className={`p-3 rounded mb-3 ${message.type === 'success' ? 'bg-green-100 text-green-800' : message.type === 'error' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>
+                {message.text}
+              </div>
+            )}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Titre</label>
+                <input value={editingGoal?.title || ''} onChange={(e) => setEditingGoal((prev:any) => ({ ...(prev||{}), title: e.target.value }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Valeur cible</label>
+                  <input type="number" value={editingGoal?.target_value ?? ''} onChange={(e) => setEditingGoal((prev:any) => ({ ...(prev||{}), target_value: e.target.value }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Unité</label>
+                  <input value={editingGoal?.unit || ''} onChange={(e) => setEditingGoal((prev:any) => ({ ...(prev||{}), unit: e.target.value }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Deadline</label>
+                <input type="date" value={editingGoal?.deadline ? new Date(editingGoal.deadline).toISOString().split('T')[0] : ''} onChange={(e) => setEditingGoal((prev:any) => ({ ...(prev||{}), deadline: e.target.value }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Notes</label>
+                <textarea value={editingGoal?.notes || ''} onChange={(e) => setEditingGoal((prev:any) => ({ ...(prev||{}), notes: e.target.value }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" rows={3}></textarea>
+              </div>
+              <div className="flex justify-end space-x-3">
+                <button onClick={() => { setShowNewGoal(false); setEditingGoal(null); setMessage(null); }} className="px-4 py-2 bg-gray-200 rounded">Annuler</button>
+                <button onClick={async () => {
+                  // Validate
+                  if (!editingGoal || !editingGoal.title || String(editingGoal.title).trim() === '') { setMessage({ type: 'error', text: 'Le titre est requis' }); return; }
+                  try {
+                    if (editingGoal.id) {
+                      // update
+                      const res = await fetch('/api/client-goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'update', payload: { ...editingGoal, coach_id: userProfile!.id } }) });
+                      const j = await res.json();
+                      if (!res.ok) { setMessage({ type: 'error', text: 'Erreur mise à jour' }); return; }
+                      setClientGoals(prev => prev.map(g => g.id === j.data.id ? j.data : g));
+                      setMessage({ type: 'success', text: 'Objectif mis à jour' });
+                    } else {
+                      // create
+                      const payload: any = { ...editingGoal, client_id: client!.id, coach_id: userProfile!.id, goal_type: editingGoal.goal_type || 'custom' };
+                      const res = await fetch('/api/client-goals', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', payload }) });
+                      const j = await res.json();
+                      if (!res.ok) { setMessage({ type: 'error', text: 'Erreur création' }); return; }
+                      setClientGoals(prev => [j.data, ...prev]);
+                      setMessage({ type: 'success', text: 'Objectif créé' });
+                    }
+                    // close after short delay
+                    setTimeout(() => { setShowNewGoal(false); setEditingGoal(null); setMessage(null); }, 800);
+                  } catch (e) {
+                    console.error('Goal save error', e);
+                    setMessage({ type: 'error', text: 'Erreur lors de la sauvegarde' });
+                  }
+                }} className="px-4 py-2 bg-blue-600 text-white rounded">Enregistrer</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirmation modal */}
+      {deletingGoalId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-sm">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Confirmer la suppression</h3>
+            <p className="mb-4">Voulez-vous vraiment supprimer cet objectif ? Cette action est irréversible.</p>
+            <div className="flex justify-end space-x-3">
+              <button onClick={() => setDeletingGoalId(null)} className="px-4 py-2 bg-gray-200 rounded">Annuler</button>
+              <button onClick={async () => {
+                try {
+                  const res = await fetch('/api/client-goals', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: deletingGoalId, coach_id: userProfile!.id }) });
+                  const j = await res.json();
+                  if (!res.ok) { console.error('Delete failed', j); setMessage({ type: 'error', text: 'Impossible de supprimer' }); return; }
+                  setClientGoals(prev => prev.filter(g => g.id !== deletingGoalId));
+                  setMessage({ type: 'success', text: 'Objectif supprimé' });
+                  setDeletingGoalId(null);
+                } catch (e) {
+                  console.error('Delete goal error', e);
+                  setMessage({ type: 'error', text: 'Erreur lors de la suppression' });
+                }
+              }} className="px-4 py-2 bg-red-600 text-white rounded">Supprimer</button>
+            </div>
+          </div>
+        </div>
+      )}
       </div>
       {/* Program create/edit modal */}
       {(creatingProgram || editingProgram) && (
@@ -750,6 +1252,161 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
           </div>
         </div>
       )}
+      {/* Edit Workout Modal (local state) */}
+      {editingWorkout && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Éditer séance</h3>
+            <div className="space-y-3">
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Date</label>
+                <input
+                  type="date"
+                  value={editingWorkout?.date ? new Date(editingWorkout.date).toISOString().split('T')[0] : ''}
+                  onChange={(e) => setEditingWorkout((prev:any)=> ({ ...prev, date: e.target.value }))}
+                  className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Programme</label>
+                <input value={editingWorkout.program} onChange={(e) => setEditingWorkout((prev:any)=> ({ ...prev, program: e.target.value }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Durée (min)</label>
+                  <input type="number" value={editingWorkout.duration} onChange={(e) => setEditingWorkout((prev:any)=> ({ ...prev, duration: parseInt(e.target.value) || 0 }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" />
+                </div>
+                <div>
+                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Exercices (#)</label>
+                  <input type="number" value={editingWorkout?.exercises ?? 0} onChange={(e) => setEditingWorkout((prev:any)=> ({ ...prev, exercises: parseInt(e.target.value) || 0 }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Statut</label>
+                <select value={editingWorkout.status} onChange={(e) => setEditingWorkout((prev:any)=> ({ ...prev, status: e.target.value }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900">
+                  <option value="completed">✓ Séance réalisée</option>
+                  <option value="missed">✗ Séance manquée</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Notes</label>
+                <textarea value={editingWorkout.notes || ''} onChange={(e) => setEditingWorkout((prev:any)=> ({ ...prev, notes: e.target.value }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" rows={3}></textarea>
+              </div>
+              <div className="flex justify-end space-x-3">
+                <button onClick={() => { setEditingWorkout(null); setEditingIndex(null); }} className="px-4 py-2 bg-gray-200 rounded">Annuler</button>
+                <button onClick={async () => {
+                  console.log('[ClientDetail] Saving workout from modal, editingWorkout:', editingWorkout, 'editingIndex:', editingIndex);
+                  // Persist to DB when possible
+                  try {
+                    if (!editingWorkout) {
+                      alert('Aucune donnée de séance à sauvegarder.');
+                      return;
+                    }
+                    if (!editingWorkout.date) {
+                      alert('La date est requise');
+                      return;
+                    }
+                    // Build payload for DB
+                    const payload: any = {
+                      client_id: client!.id,
+                      date: editingWorkout.date,
+                      duration_minutes: editingWorkout.duration || 0,
+                      program_name: editingWorkout.program,
+                      exercises_count: editingWorkout.exercises ?? 0,
+                      status: editingWorkout.status || 'completed',
+                      notes: editingWorkout.notes || ''
+                    };
+
+                    // If editing an existing persisted workout (id not local-...), update
+                    try {
+                      // Prefer server API that uses service-role key
+                      const apiRes = await fetch('/api/workout-sessions', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ action: editingWorkout.id && !String(editingWorkout.id).startsWith('local-') ? 'update' : 'create', payload: editingWorkout.id && !String(editingWorkout.id).startsWith('local-') ? { id: editingWorkout.id, ...payload } : payload })
+                      });
+                      const json = await apiRes.json();
+                      if (apiRes.ok && json.data) {
+                        const created = json.data;
+                        const newSession = {
+                          id: created.id,
+                          date: created.date,
+                          program: created.program_name || created.program || editingWorkout.program,
+                          duration: created.duration_minutes || editingWorkout.duration || 0,
+                          exercises: created.exercises_count || editingWorkout.exercises || 0,
+                          notes: created.notes || editingWorkout.notes || '',
+                          status: created.status || editingWorkout.status || 'completed'
+                        };
+                        if (editingWorkout.id && !String(editingWorkout.id).startsWith('local-')) {
+                          // Persisted session: replace by id
+                          setWorkoutSessions(prev => prev.map(s => s.id === newSession.id ? newSession : s));
+                        } else if (editingIndex != null) {
+                          // We were editing a local or newly-created entry in the list: replace at the same index
+                          setWorkoutSessions(prev => {
+                            const copy = [...prev];
+                            copy[editingIndex] = newSession;
+                            return copy;
+                          });
+                        } else {
+                          // New session: prepend
+                          setWorkoutSessions(prev => [newSession, ...prev]);
+                        }
+                      } else {
+                        // fallback to local and show error
+                        const errMsg = json?.error || 'unknown error';
+                        console.error('API error creating/updating workout session', errMsg, json);
+                        const fallback = {
+                          id: editingWorkout.id || `local-${Date.now()}`,
+                          date: editingWorkout.date,
+                          program: editingWorkout.program,
+                          duration: editingWorkout.duration || 0,
+                          exercises: editingWorkout.exercises ?? 0,
+                          notes: editingWorkout.notes || '',
+                          status: editingWorkout.status || 'completed'
+                        };
+                        if (editingIndex != null) {
+                          setWorkoutSessions(prev => {
+                            const copy = [...prev];
+                            copy[editingIndex] = fallback;
+                            return copy;
+                          });
+                        } else {
+                          setWorkoutSessions(prev => [fallback, ...prev]);
+                        }
+                        alert('La séance a été ajoutée localement mais la sauvegarde serveur a échoué. Vérifiez la configuration du service-role.');
+                      }
+                    } catch (apiErr) {
+                      console.error('Failed to call server API for workout session', apiErr);
+                      const fallback = {
+                        id: editingWorkout.id || `local-${Date.now()}`,
+                        date: editingWorkout.date,
+                        program: editingWorkout.program,
+                        duration: editingWorkout.duration || 0,
+                        exercises: editingWorkout.exercises ?? 0,
+                        notes: editingWorkout.notes || '',
+                        status: editingWorkout.status || 'completed'
+                      };
+                      if (editingIndex != null) {
+                        setWorkoutSessions(prev => {
+                          const copy = [...prev];
+                          copy[editingIndex] = fallback;
+                          return copy;
+                        });
+                      } else {
+                        setWorkoutSessions(prev => [fallback, ...prev]);
+                      }
+                      alert('La séance a été ajoutée localement mais la sauvegarde a échoué (API indisponible).');
+                    }
+                  } finally {
+                    setEditingWorkout(null);
+                    setEditingIndex(null);
+                  }
+                }} className="px-4 py-2 bg-blue-600 text-white rounded">Sauvegarder</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Measurement add modal */}
       {addingMeasurement && (
@@ -765,9 +1422,9 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                   const re = await dataService.getClientDetail(client!.id);
                   const mappedMeasurements = (re.measurements || []).map((m: any) => ({ 
                     date: m.date, 
-                    weight: m.weight, 
-                    bodyFat: m.body_fat, 
-                    muscle: m.muscle_mass 
+                    weight: typeof m.weight === 'number' ? m.weight : parseFloat(m.weight), 
+                    bodyFat: typeof m.body_fat === 'number' ? m.body_fat : (m.body_fat != null ? parseFloat(m.body_fat) : undefined), 
+                    muscle: typeof m.muscle_mass === 'number' ? m.muscle_mass : (m.muscle_mass != null ? parseFloat(m.muscle_mass) : undefined)
                   }));
                   setClient(prev => prev ? { ...prev, measurements: mappedMeasurements } : prev);
                 } catch (e) {
@@ -776,6 +1433,47 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                 setAddingMeasurement(false);
               }}
             />
+          </div>
+        </div>
+      )}
+      {/* Delete measurement confirmation modal */}
+      {deletingMeasurementDate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-sm">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Supprimer la mesure</h3>
+            <p className="mb-4">Voulez-vous vraiment supprimer la mesure du <strong>{new Date(deletingMeasurementDate).toLocaleDateString('fr-FR')}</strong> ?</p>
+            {message && <div className={`p-3 rounded mb-3 ${message.type === 'success' ? 'bg-green-100 text-green-800' : message.type === 'error' ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>{message.text}</div>}
+            <div className="flex justify-end space-x-3">
+              <button onClick={() => { setDeletingMeasurementDate(null); setMessage(null); }} className="px-4 py-2 bg-gray-200 rounded">Annuler</button>
+              <button onClick={async () => {
+                try {
+                  // delete by client_id + date
+                  const { createClientComponentClient } = await import('@supabase/auth-helpers-nextjs');
+                  const supabase = createClientComponentClient();
+                  const { error } = await supabase.from('measurements').delete().match({ client_id: client!.id, date: deletingMeasurementDate });
+                  if (error) {
+                    console.error('Supabase delete error', error);
+                    setMessage({ type: 'error', text: 'Impossible de supprimer la mesure' });
+                    return;
+                  }
+                  // reload measurements
+                  try {
+                    const re = await dataService.getClientDetail(client!.id);
+                    const mappedMeasurements = (re.measurements || []).map((m: any) => ({ date: m.date, weight: typeof m.weight === 'number' ? m.weight : parseFloat(m.weight), bodyFat: typeof m.body_fat === 'number' ? m.body_fat : (m.body_fat != null ? parseFloat(m.body_fat) : undefined), muscle: typeof m.muscle_mass === 'number' ? m.muscle_mass : (m.muscle_mass != null ? parseFloat(m.muscle_mass) : undefined) }));
+                    setClient(prev => prev ? { ...prev, measurements: mappedMeasurements } : prev);
+                    setMessage({ type: 'success', text: 'Mesure supprimée' });
+                    setDeletingMeasurementDate(null);
+                  } catch (e) {
+                    console.error('Reload after delete failed', e);
+                    setMessage({ type: 'error', text: 'Mesure supprimée (échec actualisation UI)' });
+                    setDeletingMeasurementDate(null);
+                  }
+                } catch (e) {
+                  console.error('Delete measurement failed', e);
+                  setMessage({ type: 'error', text: 'Erreur lors de la suppression' });
+                }
+              }} className="px-4 py-2 bg-red-600 text-white rounded">Supprimer</button>
+            </div>
           </div>
         </div>
       )}
@@ -1496,16 +2194,25 @@ interface WorkoutFormProps {
   clientId: string;
   onCancel: () => void;
   onSaved: (workout: any) => void;
+  programs?: string[];
 }
 
-function WorkoutForm({ clientId, onCancel, onSaved }: WorkoutFormProps) {
+function WorkoutForm({ clientId, onCancel, onSaved, programs }: WorkoutFormProps) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
-  const [program, setProgram] = useState('');
+  // if programs are passed, default to the first program
+  const [program, setProgram] = useState<string>('');
   const [duration, setDuration] = useState('');
   const [exercises, setExercises] = useState('');
   const [status, setStatus] = useState<'completed' | 'missed'>('completed');
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    // If programs are provided and no program selected yet, default to first
+    if (programs && programs.length > 0 && !program) {
+      setProgram(programs[0]);
+    }
+  }, [programs]);
 
   const handleSave = async () => {
     if (!program.trim() || !duration.trim() || !exercises.trim()) {
@@ -1574,13 +2281,26 @@ function WorkoutForm({ clientId, onCancel, onSaved }: WorkoutFormProps) {
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
           Nom du programme *
         </label>
-        <input 
-          type="text"
-          value={program} 
-          onChange={(e) => setProgram(e.target.value)} 
-          placeholder="Ex: Pectoraux/Triceps, Jambes, Cardio..."
-          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
-        />
+        {programs && programs.length > 0 ? (
+          <select
+            value={program}
+            onChange={(e) => setProgram(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Sélectionner un programme...</option>
+            {programs.map((p, i) => (
+              <option key={i} value={p}>{p}</option>
+            ))}
+          </select>
+        ) : (
+          <input 
+            type="text"
+            value={program} 
+            onChange={(e) => setProgram(e.target.value)} 
+            placeholder="Ex: Pectoraux/Triceps, Jambes, Cardio..."
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+          />
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
