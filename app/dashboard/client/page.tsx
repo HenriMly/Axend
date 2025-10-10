@@ -333,7 +333,8 @@ export default function ClientDashboard() {
     }
   };
 
-  if (loading) {
+  // Afficher le chargement tant que l'authentification n'est pas complètement résolue
+  if (loading || (!userProfile && user)) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-white dark:from-gray-900 dark:to-gray-800">
         <div className="flex items-center space-x-3">
@@ -344,7 +345,8 @@ export default function ClientDashboard() {
     );
   }
 
-  if (!userProfile || !isClient) {
+  // Seulement afficher "Accès refusé" si on est sûr que l'utilisateur n'est pas un client
+  if (!loading && (!userProfile || !isClient)) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-white dark:from-gray-900 dark:to-gray-800">
         <div className="text-center">
@@ -490,9 +492,14 @@ export default function ClientDashboard() {
 
       {/* Navigation tabs moderne */}
       <div className="max-w-7xl mx-auto px-6">
-        <div className="relative bg-white/40 dark:bg-gray-800/40 backdrop-blur-xl rounded-2xl p-2 border border-white/20 dark:border-gray-700/30 mb-8">
-          <nav className="flex overflow-x-auto scrollbar-hide">
-            <div className="flex space-x-1 min-w-max">
+        <div className="relative bg-white/40 dark:bg-gray-800/40 backdrop-blur-xl rounded-2xl p-4 border border-white/20 dark:border-gray-700/30 mb-8">
+          <nav className="flex overflow-x-auto" style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+            <style jsx>{`
+              nav::-webkit-scrollbar {
+                display: none;
+              }
+            `}</style>
+            <div className="flex space-x-2 min-w-max py-1">
               {[
                 { id: 'overview', label: 'Vue d\'ensemble', icon: '📊', gradient: 'from-blue-500 to-cyan-500' },
                 { id: 'programs', label: 'Programmes', icon: '💪', gradient: 'from-purple-500 to-pink-500' },
@@ -503,21 +510,21 @@ export default function ClientDashboard() {
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`relative flex items-center space-x-3 px-6 py-3 rounded-xl font-medium text-sm whitespace-nowrap transition-all duration-300 group ${
+                  className={`relative flex items-center space-x-2 px-4 py-2.5 rounded-xl font-medium text-sm whitespace-nowrap transition-all duration-300 group flex-shrink-0 ${
                     activeTab === tab.id
-                      ? `bg-gradient-to-r ${tab.gradient} text-white shadow-lg shadow-${tab.gradient.split('-')[1]}-500/25 transform scale-105`
+                      ? `bg-gradient-to-r ${tab.gradient} text-white shadow-lg shadow-${tab.gradient.split('-')[1]}-500/25`
                       : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-gray-700/60'
                   }`}
                 >
                   {activeTab === tab.id && (
                     <div className="absolute inset-0 bg-white/20 rounded-xl animate-pulse"></div>
                   )}
-                  <span className={`text-lg transition-transform duration-300 ${activeTab === tab.id ? 'scale-110' : 'group-hover:scale-105'}`}>
+                  <span className={`text-base transition-transform duration-300 ${activeTab === tab.id ? 'scale-110' : 'group-hover:scale-105'}`}>
                     {tab.icon}
                   </span>
-                  <span className="relative z-10 font-semibold">{tab.label}</span>
+                  <span className="relative z-10 font-semibold text-xs sm:text-sm">{tab.label}</span>
                   {activeTab === tab.id && (
-                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-bounce"></div>
+                    <div className="ml-1 w-2 h-2 bg-yellow-400 rounded-full animate-pulse"></div>
                   )}
                 </button>
               ))}

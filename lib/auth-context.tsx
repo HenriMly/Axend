@@ -302,14 +302,24 @@ export function useRequireClient() {
   useEffect(() => {
     console.log('[useRequireClient] State check:', { user: !!user, userProfile: !!userProfile, loading, role: userProfile?.role });
     
-    if (!loading && !user) {
+    // Attendre que le chargement soit complètement terminé
+    if (loading) return;
+    
+    // Si pas d'utilisateur après le chargement, rediriger vers login
+    if (!user) {
       console.log('[useRequireClient] No user, redirecting to login');
       router.push('/auth/client/login');
       return;
     }
     
+    // Si on a un utilisateur mais pas encore de profil, attendre un peu plus
+    if (user && !userProfile) {
+      // Ne pas rediriger immédiatement, laisser le temps au profil de se charger
+      return;
+    }
+    
     // Si on a un profil mais que c'est pas un client, rediriger
-    if (!loading && userProfile && userProfile.role !== 'client') {
+    if (userProfile && userProfile.role !== 'client') {
       console.log('[useRequireClient] User is not a client, redirecting to coach dashboard');
       router.push('/dashboard/coach');
       return;
@@ -319,7 +329,7 @@ export function useRequireClient() {
   return { 
     user, 
     userProfile, 
-    loading, // Just use the original loading state
+    loading: loading || (user && !userProfile), // Étendre le loading si on a un user mais pas de profil
     isClient: userProfile?.role === 'client', 
     signOut 
   };
@@ -333,18 +343,35 @@ export function useRequireCoach() {
   useEffect(() => {
     console.log('[useRequireCoach] State check:', { user: !!user, userProfile: !!userProfile, loading, role: userProfile?.role });
     
-    if (!loading && !user) {
+    // Attendre que le chargement soit complètement terminé
+    if (loading) return;
+    
+    // Si pas d'utilisateur après le chargement, rediriger vers login
+    if (!user) {
       console.log('[useRequireCoach] No user, redirecting to coach login');
       router.push('/auth/coach/login');
+      return;
     }
-  }, [user, loading, router]);
-
-  useEffect(() => {
-    if (!loading && userProfile && userProfile.role !== 'coach') {
+    
+    // Si on a un utilisateur mais pas encore de profil, attendre un peu plus
+    if (user && !userProfile) {
+      // Ne pas rediriger immédiatement, laisser le temps au profil de se charger
+      return;
+    }
+    
+    // Si on a un profil mais que c'est pas un coach, rediriger
+    if (userProfile && userProfile.role !== 'coach') {
       console.log('[useRequireCoach] User is not a coach, redirecting to client dashboard');
       router.push('/dashboard/client');
+      return;
     }
-  }, [userProfile, loading, router]);
+  }, [user, userProfile, loading, router]);
 
-  return { user, userProfile, loading, isCoach: userProfile?.role === 'coach', signOut };
+  return { 
+    user, 
+    userProfile, 
+    loading: loading || (user && !userProfile), // Étendre le loading si on a un user mais pas de profil
+    isCoach: userProfile?.role === 'coach', 
+    signOut 
+  };
 }
