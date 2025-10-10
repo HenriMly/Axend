@@ -541,22 +541,38 @@ export const dataService = {
     return data
   },
 
-  // Add a new measurement for a client
+  // Add or update a measurement for a client
   async addClientMeasurement(measurementData: {
     client_id: string;
     date: string;
     weight: number;
-    body_fat_percentage?: number | null;
+    body_fat?: number | null;
     muscle_mass?: number | null;
   }) {
-    const { data, error } = await supabase
-      .from('measurements')
-      .insert(measurementData)
-      .select()
-      .single()
+    console.log('[addClientMeasurement] Starting with data:', measurementData);
+    
+    try {
+      const { data, error } = await supabase
+        .from('measurements')
+        .upsert(measurementData, { 
+          onConflict: 'client_id,date' 
+        })
+        .select()
+        .single()
 
-    if (error) throw error
-    return data
+      console.log('[addClientMeasurement] Supabase response:', { data, error });
+
+      if (error) {
+        console.error('[addClientMeasurement] Supabase error:', error);
+        throw new Error(`Database error: ${error.message || 'Unknown error'}`);
+      }
+      
+      console.log('[addClientMeasurement] Success:', data);
+      return data;
+    } catch (err: any) {
+      console.error('[addClientMeasurement] Caught error:', err);
+      throw err;
+    }
   },
 
   // ===== STATS SERVICES =====

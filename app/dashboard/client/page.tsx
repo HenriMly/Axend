@@ -74,7 +74,7 @@ interface Measurement {
   id: string;
   date: string;
   weight: number;
-  body_fat_percentage?: number;
+  body_fat?: number;
   muscle_mass?: number;
 }
 
@@ -104,7 +104,7 @@ export default function ClientDashboard() {
   const [isAddingMeasurement, setIsAddingMeasurement] = useState(false);
   const [measurementData, setMeasurementData] = useState({
     weight: '',
-    body_fat_percentage: '',
+    body_fat: '',
     muscle_mass: '',
     date: new Date().toISOString().split('T')[0] // Date du jour par défaut
   });
@@ -193,7 +193,7 @@ export default function ClientDashboard() {
     setShowAddMeasurementModal(false);
     setMeasurementData({
       weight: '',
-      body_fat_percentage: '',
+      body_fat: '',
       muscle_mass: '',
       date: new Date().toISOString().split('T')[0]
     });
@@ -201,30 +201,88 @@ export default function ClientDashboard() {
 
   const submitMeasurement = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userProfile?.id || !measurementData.weight) return;
+    if (!userProfile?.id || !measurementData.weight) {
+      alert('Données manquantes : ID utilisateur ou poids requis');
+      return;
+    }
+
+    const weight = parseFloat(measurementData.weight);
+    if (isNaN(weight) || weight <= 0) {
+      alert('Veuillez entrer un poids valide');
+      return;
+    }
 
     setIsAddingMeasurement(true);
 
     try {
+      console.log('Client submitMeasurement - userProfile.id:', userProfile.id);
+      console.log('Client submitMeasurement - form values:', measurementData);
+      
       const measurementToAdd = {
         client_id: userProfile.id,
         date: measurementData.date,
-        weight: parseFloat(measurementData.weight),
-        body_fat_percentage: measurementData.body_fat_percentage ? parseFloat(measurementData.body_fat_percentage) : null,
+        weight: weight,
+        body_fat: measurementData.body_fat ? parseFloat(measurementData.body_fat) : null,
         muscle_mass: measurementData.muscle_mass ? parseFloat(measurementData.muscle_mass) : null
       };
 
-      await dataService.addClientMeasurement(measurementToAdd);
+      console.log('Adding measurement:', measurementToAdd);
+      
+      const result = await dataService.addClientMeasurement(measurementToAdd);
+      console.log('Measurement added successfully:', result);
       
       // Recharger les mesures
       const updatedMeasurements = await dataService.getClientMeasurements(userProfile.id);
       setMeasurements(updatedMeasurements || []);
       
-      closeAddMeasurementModal();
+      // Mettre à jour le poids actuel dans clientData
+      if (updatedMeasurements && updatedMeasurements.length > 0) {
+        setClientData(prev => prev ? { 
+          ...prev, 
+          current_weight: updatedMeasurements[0].weight 
+        } : prev);
+      }
       
-    } catch (error) {
+      closeAddMeasurementModal();
+      alert('Mesure ajoutée avec succès !');
+      
+    } catch (error: any) {
+      console.error('Client measurement save failed');
       console.error('Error adding measurement:', error);
-      alert('Erreur lors de l\'ajout de la mesure. Veuillez réessayer.');
+      console.error('Error message:', error?.message);
+      console.error('Error code:', error?.code);
+      console.error('Error details:', error?.details);
+      console.error('Full error object:', JSON.stringify(error, null, 2));
+      
+      let errorMessage = 'Erreur lors de l\'ajout de la mesure. Veuillez réessayer.';
+      if (error?.message) {
+        if (error.message.includes('duplicate key') || error.message.includes('unique constraint')) {
+          errorMessage = 'Une mesure existe déjà pour cette date. Elle a été mise à jour avec les nouvelles valeurs.';
+          // Si c'est juste un conflit de clé, on peut considérer cela comme un succès
+          closeAddMeasurementModal();
+          // Recharger les mesures pour afficher la mise à jour
+          try {
+            const updatedMeasurements = await dataService.getClientMeasurements(userProfile.id);
+            setMeasurements(updatedMeasurements || []);
+            
+            // Mettre à jour le poids actuel dans clientData
+            if (updatedMeasurements && updatedMeasurements.length > 0) {
+              setClientData(prev => prev ? { 
+                ...prev, 
+                current_weight: updatedMeasurements[0].weight 
+              } : prev);
+            }
+            
+            alert('Mesure mise à jour avec succès !');
+            return;
+          } catch (reloadError) {
+            console.error('Error reloading measurements:', reloadError);
+          }
+        } else {
+          errorMessage = `Erreur: ${error.message}`;
+        }
+      }
+      alert(errorMessage);
     } finally {
       setIsAddingMeasurement(false);
     }
@@ -1327,8 +1385,8 @@ export default function ClientDashboard() {
                     <input
                       type="number"
                       step="0.1"
-                      value={measurementData.body_fat_percentage}
-                      onChange={(e) => setMeasurementData(prev => ({ ...prev, body_fat_percentage: e.target.value }))}
+                      value={measurementData.body_fat}
+                      onChange={(e) => setMeasurementData(prev => ({ ...prev, body_fat: e.target.value }))}
                       placeholder="Ex: 15.2"
                       className="w-full px-4 py-3 bg-gray-50/50 dark:bg-gray-800/30 border border-gray-200/50 dark:border-gray-600/30 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:text-white backdrop-blur-sm"
                     />

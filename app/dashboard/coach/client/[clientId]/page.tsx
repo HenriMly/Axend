@@ -1058,42 +1058,170 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                 </button>
               </div>
               <div className="p-6">
-                <div className="space-y-4">
-                  {client.measurements.map((measurement, index) => (
-                    <div key={index} className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-lg">
-                      <div>
-                        <div className="font-medium text-gray-900 dark:text-white">
-                          {new Date(measurement.date).toLocaleDateString('fr-FR')}
-                        </div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400">
-                          Poids: {measurement.weight}kg
-                          {measurement.bodyFat && ` • Masse grasse: ${measurement.bodyFat}%`}
-                          {measurement.muscle && ` • Masse musculaire: ${measurement.muscle}kg`}
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="flex items-center space-x-3">
-                          <button onClick={() => setDeletingMeasurementDate(measurement.date)} className="text-sm text-red-600 hover:underline">Supprimer</button>
-                        </div>
-                        <div className="mt-2">
-                        {index > 0 && (
-                          <div className={`text-sm font-medium ${
-                            measurement.weight < client.measurements[index - 1].weight
-                              ? 'text-green-600 dark:text-green-400'
-                              : measurement.weight > client.measurements[index - 1].weight
-                              ? 'text-red-600 dark:text-red-400'
-                              : 'text-gray-600 dark:text-gray-400'
-                          }`}>
-                            {measurement.weight < client.measurements[index - 1].weight ? '↓' : 
-                             measurement.weight > client.measurements[index - 1].weight ? '↑' : '→'}
-                            {Math.abs(measurement.weight - client.measurements[index - 1].weight).toFixed(1)}kg
+                {client.measurements.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="text-gray-400 text-6xl mb-4">📏</div>
+                    <h4 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Aucune mesure enregistrée</h4>
+                    <p className="text-gray-600 dark:text-gray-400 mb-6">
+                      Commencez par ajouter les mesures de votre client pour suivre son évolution
+                    </p>
+                    <button 
+                      onClick={() => setAddingMeasurement(true)}
+                      className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors"
+                    >
+                      Ajouter la première mesure
+                    </button>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {client.measurements.map((measurement, index) => {
+                      const previousMeasurement = index < client.measurements.length - 1 ? client.measurements[index + 1] : null;
+                      const weightChange = previousMeasurement ? measurement.weight - previousMeasurement.weight : 0;
+                      const isLatest = index === 0;
+                      
+                      return (
+                        <div key={index} className={`group relative p-6 rounded-2xl border-2 transition-all duration-300 hover:shadow-lg ${
+                          isLatest 
+                            ? 'bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 border-blue-200 dark:border-blue-700 shadow-md' 
+                            : 'bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:border-blue-200 dark:hover:border-blue-700'
+                        }`}>
+                          
+                          {/* Badge "Dernière mesure" */}
+                          {isLatest && (
+                            <div className="absolute -top-3 left-6">
+                              <span className="px-3 py-1 bg-blue-600 text-white text-xs font-semibold rounded-full shadow-lg">
+                                Dernière mesure
+                              </span>
+                            </div>
+                          )}
+
+                          <div className="flex items-center justify-between">
+                            {/* Informations principales */}
+                            <div className="flex items-center space-x-6">
+                              {/* Icône et date */}
+                              <div className="flex items-center space-x-4">
+                                <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg ${
+                                  isLatest 
+                                    ? 'bg-gradient-to-r from-blue-500 to-cyan-500' 
+                                    : 'bg-gradient-to-r from-gray-400 to-gray-500'
+                                }`}>
+                                  <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16l3-3m-3 3l-3-3" />
+                                  </svg>
+                                </div>
+                                <div>
+                                  <div className="font-bold text-xl text-gray-900 dark:text-white">
+                                    {new Date(measurement.date).toLocaleDateString('fr-FR')}
+                                  </div>
+                                  <div className="text-sm text-gray-500 dark:text-gray-400">
+                                    {new Intl.DateTimeFormat('fr-FR', { weekday: 'long' }).format(new Date(measurement.date))}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Métriques */}
+                              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                {/* Poids */}
+                                <div className="text-center">
+                                  <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Poids</div>
+                                  <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                                    {measurement.weight}kg
+                                  </div>
+                                  {previousMeasurement && (
+                                    <div className={`text-sm font-medium flex items-center justify-center mt-1 ${
+                                      weightChange > 0 ? 'text-red-600 dark:text-red-400' :
+                                      weightChange < 0 ? 'text-green-600 dark:text-green-400' :
+                                      'text-gray-600 dark:text-gray-400'
+                                    }`}>
+                                      {weightChange > 0 ? '↗' : weightChange < 0 ? '↘' : '→'}
+                                      <span className="ml-1">{Math.abs(weightChange).toFixed(1)}kg</span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Masse grasse */}
+                                {measurement.bodyFat && (
+                                  <div className="text-center">
+                                    <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Masse grasse</div>
+                                    <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">
+                                      {measurement.bodyFat}%
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Masse musculaire */}
+                                {measurement.muscle && (
+                                  <div className="text-center">
+                                    <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Masse musculaire</div>
+                                    <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                                      {measurement.muscle}kg
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex flex-col items-end space-y-2">
+                              <button 
+                                onClick={() => setDeletingMeasurementDate(measurement.date)} 
+                                className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 px-3 py-1 text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
+                              >
+                                🗑️ Supprimer
+                              </button>
+                              
+                              {/* Temps écoulé */}
+                              <div className="text-xs text-gray-500 dark:text-gray-400">
+                                {(() => {
+                                  const days = Math.floor((new Date().getTime() - new Date(measurement.date).getTime()) / (1000 * 60 * 60 * 24));
+                                  if (days === 0) return "Aujourd'hui";
+                                  if (days === 1) return "Hier";
+                                  if (days < 7) return `Il y a ${days} jours`;
+                                  if (days < 30) return `Il y a ${Math.floor(days / 7)} semaine${Math.floor(days / 7) > 1 ? 's' : ''}`;
+                                  return `Il y a ${Math.floor(days / 30)} mois`;
+                                })()}
+                              </div>
+                            </div>
                           </div>
-                        )}
+                        </div>
+                      );
+                    })}
+                    
+                    {/* Statistiques globales */}
+                    {client.measurements.length >= 2 && (
+                      <div className="mt-8 p-6 bg-gradient-to-r from-gray-50 to-blue-50 dark:from-gray-800 dark:to-blue-900/20 rounded-2xl border border-gray-200 dark:border-gray-700">
+                        <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">📊 Statistiques globales</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                          <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-xl">
+                            <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Évolution totale</div>
+                            <div className={`text-2xl font-bold ${
+                              client.measurements[0].weight < client.measurements[client.measurements.length - 1].weight
+                                ? 'text-green-600 dark:text-green-400'
+                                : 'text-red-600 dark:text-red-400'
+                            }`}>
+                              {client.measurements[0].weight < client.measurements[client.measurements.length - 1].weight ? '↘' : '↗'}
+                              {Math.abs(client.measurements[0].weight - client.measurements[client.measurements.length - 1].weight).toFixed(1)}kg
+                            </div>
+                          </div>
+                          
+                          <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-xl">
+                            <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Poids minimum</div>
+                            <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                              {Math.min(...client.measurements.map(m => m.weight)).toFixed(1)}kg
+                            </div>
+                          </div>
+                          
+                          <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-xl">
+                            <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Poids maximum</div>
+                            <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                              {Math.max(...client.measurements.map(m => m.weight)).toFixed(1)}kg
+                            </div>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
             {/* Goals progress block */}
@@ -1151,32 +1279,45 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                     <h3 className="text-lg font-semibold text-gray-900 dark:text-white">{program}</h3>
                     <div className="flex space-x-2">
                       <button onClick={async () => {
+                        console.log('Modifier button clicked for program:', program);
+                        console.log('Client ID:', client?.id);
+                        
+                        if (!client?.id) {
+                          console.error('No client ID available');
+                          return;
+                        }
+                        
                         try {
-                          // Récupérer les programmes complets avec la structure avancée
-                          console.log('Loading advanced programs for client:', client.id);
-                          const programs = await dataService.getClientProgramsAdvanced(client.id);
-                          console.log('Advanced programs loaded:', programs);
+                          console.log('Loading program details from database...');
+                          // Récupérer les programmes complets du client
+                          const programs = await dataService.getClientPrograms(client.id);
+                          console.log('Programs loaded:', programs);
                           
+                          // Trouver le programme par nom
                           const fullProgram = programs.find((p: any) => p.name === program);
+                          
                           if (fullProgram) {
-                            console.log('Editing advanced program:', fullProgram);
+                            console.log('Found full program data:', fullProgram);
                             setEditingProgram(fullProgram);
                           } else {
-                            // Fallback à l'ancien système
-                            console.log('Program not found in advanced system, trying old system...');
-                            const oldPrograms = await dataService.getClientPrograms(client.id);
-                            const oldProgram = oldPrograms.find((p: any) => p.name === program);
-                            if (oldProgram) {
-                              console.log('Found in old system:', oldProgram);
-                              setEditingProgram(oldProgram);
-                            } else {
-                              setEditingProgram({ name: program });
-                            }
+                            console.warn('Program not found in database, using fallback');
+                            // Fallback avec les données minimales
+                            const programToEdit = { 
+                              name: program,
+                              client_id: client.id,
+                              coach_id: userProfile?.id 
+                            };
+                            setEditingProgram(programToEdit);
                           }
-                        } catch (e) {
-                          console.error('Failed to load program for editing', e);
+                        } catch (error) {
+                          console.error('Error loading program details:', error);
                           // Fallback en cas d'erreur
-                          setEditingProgram({ name: program });
+                          const programToEdit = { 
+                            name: program,
+                            client_id: client.id,
+                            coach_id: userProfile?.id 
+                          };
+                          setEditingProgram(programToEdit);
                         }
                       }} className="px-3 py-1 text-sm font-medium text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-300 rounded-md">
                         Modifier
@@ -1495,7 +1636,17 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
       {(creatingProgram || editingProgram) && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-4xl max-h-[90vh] overflow-hidden">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">{editingProgram ? 'Modifier le programme' : 'Créer un programme'}</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                {editingProgram ? 'Modifier le programme' : 'Créer un programme'}
+              </h3>
+              <button 
+                onClick={() => { setEditingProgram(null); setCreatingProgram(false); }}
+                className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+              >
+                ✕
+              </button>
+            </div>
             <ProgramForm
               initial={editingProgram}
               clientId={client!.id}
@@ -1686,21 +1837,38 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
             <MeasurementForm
               clientId={client!.id}
               onCancel={() => setAddingMeasurement(false)}
-              onSaved={async () => {
-                // reload client
-                try {
-                  const re = await dataService.getClientDetail(client!.id);
-                  const mappedMeasurements = (re.measurements || []).map((m: any) => ({ 
-                    date: m.date, 
-                    weight: typeof m.weight === 'number' ? m.weight : parseFloat(m.weight), 
-                    bodyFat: typeof m.body_fat === 'number' ? m.body_fat : (m.body_fat != null ? parseFloat(m.body_fat) : undefined), 
-                    muscle: typeof m.muscle_mass === 'number' ? m.muscle_mass : (m.muscle_mass != null ? parseFloat(m.muscle_mass) : undefined)
-                  }));
-                  setClient(prev => prev ? { ...prev, measurements: mappedMeasurements } : prev);
-                } catch (e) {
-                  console.error('Failed to reload client after measurement save', e);
-                }
+              onSaved={(newMeasurement: any) => {
+                // Fermer le modal immédiatement
                 setAddingMeasurement(false);
+                
+                // Ajouter ou mettre à jour la mesure dans la liste locale
+                if (newMeasurement) {
+                  const mappedMeasurement = {
+                    date: newMeasurement.date,
+                    weight: newMeasurement.weight,
+                    bodyFat: newMeasurement.body_fat,
+                    muscle: newMeasurement.muscle_mass
+                  };
+                  
+                  setClient(prev => {
+                    if (!prev) return prev;
+                    
+                    // Vérifier si une mesure existe déjà pour cette date
+                    const existingIndex = prev.measurements.findIndex(m => m.date === mappedMeasurement.date);
+                    
+                    if (existingIndex >= 0) {
+                      // Mettre à jour la mesure existante
+                      const updatedMeasurements = [...prev.measurements];
+                      updatedMeasurements[existingIndex] = mappedMeasurement;
+                      return { ...prev, measurements: updatedMeasurements };
+                    } else {
+                      // Ajouter la nouvelle mesure en début de liste et trier par date décroissante
+                      const updatedMeasurements = [mappedMeasurement, ...prev.measurements]
+                        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                      return { ...prev, measurements: updatedMeasurements };
+                    }
+                  });
+                }
               }}
             />
           </div>
@@ -1755,7 +1923,7 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
 interface MeasurementFormProps {
   clientId: string;
   onCancel: () => void;
-  onSaved: () => void;
+  onSaved: (measurement?: any) => void;
 }
 
 function MeasurementForm({ clientId, onCancel, onSaved }: MeasurementFormProps) {
@@ -1764,66 +1932,73 @@ function MeasurementForm({ clientId, onCancel, onSaved }: MeasurementFormProps) 
   const [bodyFat, setBodyFat] = useState('');
   const [muscle, setMuscleMass] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSave = async () => {
+    setError('');
+    
     if (!weight.trim()) {
-      alert('Le poids est requis');
+      setError('Le poids est requis');
       return;
     }
 
     const weightNum = parseFloat(weight);
     if (isNaN(weightNum) || weightNum <= 0) {
-      alert('Veuillez entrer un poids valide');
+      setError('Veuillez entrer un poids valide');
       return;
     }
 
     setIsSaving(true);
     try {
+      console.log('MeasurementForm handleSave - clientId:', clientId);
+      console.log('MeasurementForm handleSave - form values:', { date, weight, bodyFat, muscle });
+      
       const measurementData = {
-        client_id: clientId, // addMeasurement attend client_id dans l'objet
+        client_id: clientId,
         date,
         weight: weightNum,
-        body_fat: bodyFat ? parseFloat(bodyFat) : undefined,
-        muscle_mass: muscle ? parseFloat(muscle) : undefined
+        body_fat: bodyFat ? parseFloat(bodyFat) : null,
+        muscle_mass: muscle ? parseFloat(muscle) : null
       };
 
-      // Debug: affichons les données qu'on envoie
       console.log('Sending measurement data:', measurementData);
       
-      // Essayons directement avec Supabase pour contourner le problème
-      const { createClientComponentClient } = await import('@supabase/auth-helpers-nextjs');
-      const supabase = createClientComponentClient();
+      // Utiliser le service de données
+      const result = await dataService.addClientMeasurement(measurementData);
+      console.log('Measurement added successfully:', result);
       
-      const { data, error } = await supabase
-        .from('measurements')
-        .upsert(measurementData, { onConflict: 'client_id,date' })
-        .select()
-        .single();
-        
-      if (error) {
-        console.error('Direct Supabase error:', error);
-        throw error;
-      }
+      // Créer l'objet mesure pour l'état local
+      const newMeasurement = {
+        date: measurementData.date,
+        weight: measurementData.weight,
+        body_fat: measurementData.body_fat,
+        muscle_mass: measurementData.muscle_mass
+      };
       
-      console.log('Direct Supabase success:', data);
-      
-      // Mettre à jour aussi le poids actuel du client dans la table clients
-      try {
-        await supabase
-          .from('clients')
-          .update({ current_weight: weightNum })
-          .eq('id', clientId);
-      } catch (clientUpdateError) {
-        console.log('Client weight update failed (non-critical):', clientUpdateError);
-      }
-      
-      await onSaved();
+      // Appeler onSaved avec la nouvelle mesure pour l'ajouter à la liste locale
+      onSaved(newMeasurement);
     } catch (e: any) {
       console.error('Measurement save failed');
       console.error('Error details:', e);
       console.error('Error message:', e?.message);
       console.error('Error code:', e?.code);
-      alert(`Erreur lors de la sauvegarde de la mesure: ${e?.message || 'Erreur inconnue'}`);
+      console.error('Full error object:', JSON.stringify(e, null, 2));
+      
+      let errorMessage = `Erreur lors de la sauvegarde de la mesure: ${e?.message || 'Erreur inconnue'}`;
+      if (e?.message && (e.message.includes('duplicate key') || e.message.includes('unique constraint'))) {
+        // Créer l'objet mesure mise à jour pour l'état local
+        const updatedMeasurement = {
+          date: date,
+          weight: weightNum,
+          body_fat: bodyFat ? parseFloat(bodyFat) : null,
+          muscle_mass: muscle ? parseFloat(muscle) : null
+        };
+        // Considérer comme un succès et retourner la mesure mise à jour
+        onSaved(updatedMeasurement);
+        return;
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsSaving(false);
     }
@@ -1831,6 +2006,12 @@ function MeasurementForm({ clientId, onCancel, onSaved }: MeasurementFormProps) 
 
   return (
     <div className="space-y-4">
+      {error && (
+        <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg">
+          <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+        </div>
+      )}
+      
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
           Date *
