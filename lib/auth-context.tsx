@@ -39,6 +39,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const clearSession = async () => {
+    console.log('[auth-context] Clearing session due to token error');
+    try {
+      await supabase.auth.signOut();
+      
+      // Nettoyer complètement le localStorage Supabase
+      const keys = Object.keys(localStorage);
+      keys.forEach(key => {
+        if (key.startsWith('sb-') || key.includes('supabase')) {
+          localStorage.removeItem(key);
+        }
+      });
+    } catch (e) {
+      console.warn('[auth-context] Error during signOut:', e);
+    }
+    setUser(null);
+    setUserProfile(null);
+    setLoading(false);
+  };
+
   useEffect(() => {
     // Handle possible redirect from email confirmation / magic link
     ;(async () => {
@@ -71,7 +91,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // Récupérer la session initiale
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session }, error } = await supabase.auth.getSession();
+        
+        // Si erreur de refresh token, nettoyer la session
+        if (error && (error.message?.includes('refresh') || error.message?.includes('token'))) {
+          console.warn('[auth-context] Invalid refresh token, clearing session:', error.message);
+          await clearSession();
+          return;
+        }
+
         setUser(session?.user ?? null);
 
         if (session?.user) {
@@ -89,8 +117,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
           setUserProfile(profile);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error('[auth-context] getSession failed:', err);
+        
+        // Si c'est une erreur de refresh token, nettoyer la session
+        if (err?.message?.includes('refresh') || err?.message?.includes('token')) {
+          console.warn('[auth-context] Refresh token error, signing out');
+          await clearSession();
+        }
       } finally {
         setLoading(false);
       }
@@ -101,6 +135,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const res = supabase.auth.onAuthStateChange(async (event, session) => {
         try {
+          console.log('[auth-context] Auth state change:', event);
+          
+          // Si l'événement indique une erreur de token, nettoyer la session
+          if (event === 'TOKEN_REFRESHED' && !session) {
+            console.warn('[auth-context] Token refresh failed, clearing session');
+            setUser(null);
+            setUserProfile(null);
+            setLoading(false);
+            return;
+          }
+
           const sessUser = session?.user ?? null
           setUser(sessUser);
 
@@ -122,8 +167,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           } else {
             setUserProfile(null);
           }
-        } catch (handlerErr) {
+        } catch (handlerErr: any) {
           console.error('[auth-context.onAuthStateChange] handler error:', handlerErr);
+          
+          // Si erreur liée au refresh token, nettoyer la session
+          if (handlerErr?.message?.includes('refresh') || handlerErr?.message?.includes('token')) {
+            console.warn('[auth-context] Token error in handler, clearing session');
+            await clearSession();
+            return;
+          }
         } finally {
           setLoading(false);
         }
@@ -185,8 +237,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    try {
+      await supabase.auth.signOut();
+      
+      // Nettoyer complètement le localStorage Supabase
+      const keys = Object.keys(localStorage);
+      keys.forEach(key => {
+        if (key.startsWith('sb-') || key.includes('supabase')) {
+          localStorage.removeItem(key);
+        }
+      });
+    } catch (error) {
+      console.warn('[auth-context.signOut] Error during signOut:', error);
+    }
     
     setUser(null);
     setUserProfile(null);

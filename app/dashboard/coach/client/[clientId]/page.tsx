@@ -316,9 +316,26 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
       return latest.weight;
     } catch (e) { return null; }
   })();
-  const currentWeightDisplayed = progressForWeight ? progressForWeight.current : (latestMeasurementWeight ?? client?.currentWeight ?? 0);
+  // Prioriser la mesure la plus récente, puis le poids actuel
+  const currentWeightDisplayed = latestMeasurementWeight ?? client?.currentWeight ?? 0;
   const targetWeightDisplayed = progressForWeight ? progressForWeight.target : (weightGoal ? Number(weightGoal.target_value) : client?.targetWeight ?? 0);
-  const weightPercent = progressForWeight ? progressForWeight.percent : (targetWeightDisplayed ? Math.round(Math.min(100, Math.abs((currentWeightDisplayed - targetWeightDisplayed) / (targetWeightDisplayed || 1) * 100))) : 0);
+  const weightPercent = (() => {
+    if (progressForWeight) return progressForWeight.percent;
+    
+    if (!currentWeightDisplayed || !targetWeightDisplayed) return 0;
+    
+    // Calculer la progression basée sur le poids de départ vers l'objectif
+    const startWeight = client?.measurements && client.measurements.length > 0 
+      ? client.measurements.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0].weight
+      : client?.currentWeight || currentWeightDisplayed;
+    
+    const totalProgress = targetWeightDisplayed - startWeight;
+    const currentProgress = currentWeightDisplayed - startWeight;
+    
+    if (totalProgress === 0) return currentWeightDisplayed === targetWeightDisplayed ? 100 : 0;
+    
+    return Math.max(0, Math.min(100, Math.round((currentProgress / totalProgress) * 100)));
+  })();
 
   if (isLoading) {
     return (
@@ -405,6 +422,7 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
               { id: 'progress', name: 'Évolution', icon: '📈' },
               { id: 'programs', name: 'Programmes', icon: '📋' },
               { id: 'goals', name: 'Objectifs', icon: '🎯' },
+              { id: 'personal', name: 'Infos personnelles', icon: '👤' },
             ].map((tab) => (
               <button
                 key={tab.id}
@@ -773,6 +791,10 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
               </div>
             )}
           </div>
+        )}
+
+        {activeTab === 'personal' && (
+          <PersonalInfoTab client={client} setClient={setClient} />
         )}
 
         {activeTab === 'progress' && (
@@ -1536,6 +1558,16 @@ function MeasurementForm({ clientId, onCancel, onSaved }: MeasurementFormProps) 
       }
       
       console.log('Direct Supabase success:', data);
+      
+      // Mettre à jour aussi le poids actuel du client dans la table clients
+      try {
+        await supabase
+          .from('clients')
+          .update({ current_weight: weightNum })
+          .eq('id', clientId);
+      } catch (clientUpdateError) {
+        console.log('Client weight update failed (non-critical):', clientUpdateError);
+      }
       
       await onSaved();
     } catch (e: any) {
@@ -2360,6 +2392,405 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs }: WorkoutFormProps
         >
           {isSaving ? 'Enregistrement...' : 'Ajouter la séance'}
         </button>
+      </div>
+    </div>
+  );
+}
+
+// Composant pour l'onglet informations personnelles
+interface PersonalInfoTabProps {
+  client: Client;
+  setClient: (client: Client) => void;
+}
+
+function PersonalInfoTab({ client, setClient }: PersonalInfoTabProps) {
+  const [isEditing, setIsEditing] = useState(false);
+  
+  // Calculer le poids actuel en priorisant la mesure la plus récente
+  const getCurrentWeight = () => {
+    try {
+      const ms = client?.measurements || [];
+      if (ms.length === 0) return client.currentWeight || 0;
+      let latest = ms[0];
+      for (const m of ms) {
+        if (new Date(m.date) > new Date(latest.date)) latest = m;
+      }
+      return latest.weight || client.currentWeight || 0;
+    } catch (e) {
+      return client.currentWeight || 0;
+    }
+  };
+  
+  const currentWeight = getCurrentWeight();
+  
+  const [editForm, setEditForm] = useState({
+    name: client.name || '',
+    email: client.email || '',
+    age: client.age || '',
+    height: client.height || '',
+    current_weight: currentWeight || '',
+    target_weight: client.targetWeight || ''
+  });
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    try {
+      // Sauvegarder dans la base de données
+      const { createClientComponentClient } = await import('@supabase/auth-helpers-nextjs');
+      const supabase = createClientComponentClient();
+      
+      const clientUpdateData = {
+        name: editForm.name,
+        email: editForm.email,
+        age: Number(editForm.age) || null,
+        height: Number(editForm.height) || null,
+        current_weight: Number(editForm.current_weight) || null,
+        target_weight: Number(editForm.target_weight) || null
+      };
+      
+      // Mettre à jour le client dans la base de données
+      const { error: clientError } = await supabase
+        .from('clients')
+        .update(clientUpdateData)
+        .eq('id', client.id);
+        
+      if (clientError) {
+        console.error('Error updating client:', clientError);
+        throw clientError;
+      }
+      
+      const updatedClient = {
+        ...client,
+        name: editForm.name,
+        email: editForm.email,
+        age: Number(editForm.age) || 0,
+        height: Number(editForm.height) || 0,
+        currentWeight: Number(editForm.current_weight) || 0,
+        targetWeight: Number(editForm.target_weight) || 0
+      };
+      
+      // Si le poids a changé, on ajoute une nouvelle mesure
+      const currentWeight = Number(editForm.current_weight);
+      const previousWeight = client.currentWeight;
+      
+      if (currentWeight && currentWeight !== previousWeight) {
+        try {
+          const measurementData = {
+            client_id: client.id,
+            date: new Date().toISOString().split('T')[0], // Date du jour
+            weight: currentWeight
+          };
+          
+          await supabase
+            .from('measurements')
+            .upsert(measurementData, { onConflict: 'client_id,date' });
+          
+          // Recharger les mesures pour mettre à jour l'affichage
+          const updatedData = await dataService.getClientDetail(client.id);
+          const mappedMeasurements = (updatedData.measurements || []).map((m: any) => ({ 
+            date: m.date, 
+            weight: typeof m.weight === 'number' ? m.weight : parseFloat(m.weight), 
+            bodyFat: typeof m.body_fat === 'number' ? m.body_fat : (m.body_fat != null ? parseFloat(m.body_fat) : undefined), 
+            muscle: typeof m.muscle_mass === 'number' ? m.muscle_mass : (m.muscle_mass != null ? parseFloat(m.muscle_mass) : undefined)
+          }));
+          
+          updatedClient.measurements = mappedMeasurements;
+        } catch (measurementError) {
+          console.error('Error adding measurement:', measurementError);
+          // On continue malgré l'erreur de mesure
+        }
+      }
+      
+      setClient(updatedClient);
+      setIsEditing(false);
+    } catch (error) {
+      console.error('Error saving client info:', error);
+      alert('Erreur lors de la sauvegarde');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const calculateBMI = () => {
+    if (currentWeight && client.height) {
+      const heightInMeters = client.height / 100;
+      const bmi = currentWeight / (heightInMeters * heightInMeters);
+      return bmi.toFixed(1);
+    }
+    return 'N/A';
+  };
+
+  const getBMICategory = (bmi: string) => {
+    if (bmi === 'N/A') return { text: 'Non calculable', color: 'text-gray-500' };
+    const bmiValue = parseFloat(bmi);
+    if (bmiValue < 18.5) return { text: 'Maigreur', color: 'text-blue-600' };
+    if (bmiValue < 25) return { text: 'Normal', color: 'text-green-600' };
+    if (bmiValue < 30) return { text: 'Surpoids', color: 'text-yellow-600' };
+    return { text: 'Obésité', color: 'text-red-600' };
+  };
+
+  const bmi = calculateBMI();
+  const bmiCategory = getBMICategory(bmi);
+
+  return (
+    <div className="space-y-6">
+      {/* En-tête avec photo et actions */}
+      <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700">
+        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+              👤 Informations personnelles
+            </h3>
+            {!isEditing ? (
+              <button 
+                onClick={() => setIsEditing(true)}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                ✏️ Modifier
+              </button>
+            ) : (
+              <div className="flex space-x-2">
+                <button 
+                  onClick={() => {
+                    setIsEditing(false);
+                    setEditForm({
+                      name: client.name || '',
+                      email: client.email || '',
+                      age: client.age || '',
+                      height: client.height || '',
+                      current_weight: currentWeight || '',
+                      target_weight: client.targetWeight || ''
+                    });
+                  }}
+                  className="px-3 py-2 text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-600 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500 text-sm"
+                >
+                  Annuler
+                </button>
+                <button 
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                >
+                  {isSaving ? 'Sauvegarde...' : 'Sauvegarder'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="p-6">
+          {/* Photo de profil */}
+          <div className="flex items-start space-x-6 mb-8">
+            <div className="flex flex-col items-center">
+              <div className="w-24 h-24 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center mb-3">
+                <span className="text-white font-bold text-2xl">
+                  {client.name.charAt(0).toUpperCase()}
+                </span>
+              </div>
+              <button className="text-sm text-blue-600 dark:text-blue-400 hover:underline">
+                Changer la photo
+              </button>
+            </div>
+            
+            <div className="flex-1">
+              <h4 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+                {client.name}
+              </h4>
+              <p className="text-gray-600 dark:text-gray-400 mb-1">{client.email}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                Client depuis le {new Date(client.joinedDate).toLocaleDateString('fr-FR')}
+              </p>
+            </div>
+          </div>
+
+          {/* Informations détaillées */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {isEditing ? (
+              // Mode édition
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Nom complet
+                  </label>
+                  <input 
+                    type="text"
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({...editForm, name: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Email
+                  </label>
+                  <input 
+                    type="email"
+                    value={editForm.email}
+                    onChange={(e) => setEditForm({...editForm, email: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Âge (années)
+                  </label>
+                  <input 
+                    type="number"
+                    value={editForm.age}
+                    onChange={(e) => setEditForm({...editForm, age: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Taille (cm)
+                  </label>
+                  <input 
+                    type="number"
+                    value={editForm.height}
+                    onChange={(e) => setEditForm({...editForm, height: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Poids actuel (kg)
+                  </label>
+                  <input 
+                    type="number"
+                    step="0.1"
+                    value={editForm.current_weight}
+                    onChange={(e) => setEditForm({...editForm, current_weight: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                    Poids objectif (kg)
+                  </label>
+                  <input 
+                    type="number"
+                    step="0.1"
+                    value={editForm.target_weight}
+                    onChange={(e) => setEditForm({...editForm, target_weight: e.target.value})}
+                    className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                </div>
+              </>
+            ) : (
+              // Mode affichage
+              <>
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                  <div className="flex items-center mb-2">
+                    <span className="text-2xl mr-2">🎂</span>
+                    <h5 className="font-medium text-gray-900 dark:text-white">Âge</h5>
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {client.age || 'Non renseigné'} {client.age && 'ans'}
+                  </p>
+                </div>
+
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                  <div className="flex items-center mb-2">
+                    <span className="text-2xl mr-2">📏</span>
+                    <h5 className="font-medium text-gray-900 dark:text-white">Taille</h5>
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {client.height || 'Non renseigné'} {client.height && 'cm'}
+                  </p>
+                </div>
+
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                  <div className="flex items-center mb-2">
+                    <span className="text-2xl mr-2">⚖️</span>
+                    <h5 className="font-medium text-gray-900 dark:text-white">Poids actuel</h5>
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {currentWeight || 'Non renseigné'} {currentWeight && 'kg'}
+                  </p>
+                </div>
+
+                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-4">
+                  <div className="flex items-center mb-2">
+                    <span className="text-2xl mr-2">🎯</span>
+                    <h5 className="font-medium text-gray-900 dark:text-white">Objectif poids</h5>
+                  </div>
+                  <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                    {client.targetWeight || 'Non renseigné'} {client.targetWeight && 'kg'}
+                  </p>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* Indicateurs de santé */}
+          {!isEditing && (
+            <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+              <h5 className="font-medium text-gray-900 dark:text-white mb-4">📊 Indicateurs de santé</h5>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-blue-700 dark:text-blue-300">IMC</span>
+                    <span className="text-2xl">🏥</span>
+                  </div>
+                  <p className="text-2xl font-bold text-blue-900 dark:text-blue-100">{bmi}</p>
+                  <p className={`text-sm ${bmiCategory.color}`}>{bmiCategory.text}</p>
+                </div>
+
+                <div className="bg-green-50 dark:bg-green-900/20 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-green-700 dark:text-green-300">Objectif</span>
+                    <span className="text-2xl">📈</span>
+                  </div>
+                  <p className="text-2xl font-bold text-green-900 dark:text-green-100">
+                    {currentWeight && client.targetWeight 
+                      ? `${currentWeight > client.targetWeight ? '-' : '+'}${Math.abs(currentWeight - client.targetWeight)}kg`
+                      : 'N/A'
+                    }
+                  </p>
+                  <p className="text-sm text-green-600 dark:text-green-400">
+                    {currentWeight && client.targetWeight 
+                      ? (currentWeight > client.targetWeight ? 'À perdre' : 'À gagner')
+                      : 'Non défini'
+                    }
+                  </p>
+                </div>
+
+                <div className="bg-purple-50 dark:bg-purple-900/20 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-medium text-purple-700 dark:text-purple-300">Progression</span>
+                    <span className="text-2xl">🎯</span>
+                  </div>
+                  <p className="text-2xl font-bold text-purple-900 dark:text-purple-100">
+                    {(() => {
+                      if (!currentWeight || !client.targetWeight) return 'N/A';
+                      
+                      // Poids de départ : première mesure ou poids initial du profil
+                      const startWeight = client.measurements && client.measurements.length > 0 
+                        ? client.measurements.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0].weight
+                        : currentWeight;
+                      
+                      // Progression actuelle = (poids actuel - poids de départ) / (objectif - poids de départ) * 100
+                      const totalProgress = client.targetWeight - startWeight;
+                      const currentProgress = currentWeight - startWeight;
+                      const percentage = totalProgress !== 0 ? Math.round((currentProgress / totalProgress) * 100) : 0;
+                      
+                      return `${Math.max(0, Math.min(100, percentage))}%`;
+                    })()}
+                  </p>
+                  <p className="text-sm text-purple-600 dark:text-purple-400">Vers l'objectif</p>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
