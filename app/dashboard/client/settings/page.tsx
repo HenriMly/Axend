@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useRequireClient } from '@/lib/auth-context';
+import { dataService } from '@/lib/data';
 
 interface ClientProfile {
   id: string;
@@ -30,6 +32,7 @@ interface ClientProfile {
 }
 
 export default function ClientSettings() {
+  const { user, userProfile, loading: authLoading } = useRequireClient();
   const [profile, setProfile] = useState<ClientProfile | null>(null);
   const [activeTab, setActiveTab] = useState('profile');
   const [isLoading, setIsLoading] = useState(true);
@@ -38,51 +41,83 @@ export default function ClientSettings() {
   const router = useRouter();
 
   useEffect(() => {
-    // Simulation de données du profil client
-    const mockProfile: ClientProfile = {
-      id: 'client_1',
-      name: 'Marie Dupont',
-      email: 'marie@example.com',
-      age: 28,
-      height: 165,
-      currentWeight: 65,
-      targetWeight: 60,
-      activityLevel: 'Modéré',
-      goals: ['Perte de poids', 'Tonification musculaire', 'Améliorer l\'endurance'],
-      coachId: 'coach_1',
-      joinedDate: '2024-01-15',
-      notifications: {
-        workoutReminders: true,
-        progressUpdates: true,
-        coachMessages: true,
-        weeklyReports: false
-      },
-      preferences: {
-        units: 'Métrique',
-        language: 'Français',
-        theme: 'Auto'
+    const loadClientProfile = async () => {
+      if (!userProfile?.id) return;
+      
+      try {
+        setIsLoading(true);
+        const clientData = await dataService.getClientDetail(userProfile.id);
+        
+        const clientProfile: ClientProfile = {
+          id: clientData.id,
+          name: clientData.name || '',
+          email: clientData.email || '',
+          age: clientData.age || 0,
+          height: clientData.height || 0,
+          currentWeight: clientData.currentWeight || 0,
+          targetWeight: clientData.targetWeight || 0,
+          activityLevel: 'Modéré',
+          goals: [],
+          coachId: clientData.coachId || '',
+          joinedDate: clientData.joinedDate || new Date().toISOString(),
+          notifications: {
+            workoutReminders: true,
+            progressUpdates: true,
+            coachMessages: true,
+            weeklyReports: false
+          },
+          preferences: {
+            units: 'Métrique',
+            language: 'Français',
+            theme: 'Auto'
+          }
+        };
+        
+        setProfile(clientProfile);
+      } catch (error) {
+        console.error('Error loading client profile:', error);
+        setMessage({ type: 'error', text: 'Erreur lors du chargement du profil' });
+      } finally {
+        setIsLoading(false);
       }
     };
     
-    setProfile(mockProfile);
-    setIsLoading(false);
-  }, []);
+    loadClientProfile();
+  }, [userProfile?.id]);
 
   const updateProfile = async (updates: Partial<ClientProfile>) => {
     if (!profile) return;
     
     setIsSaving(true);
     try {
-      // Ici vous feriez l'appel API à Supabase
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulation
+      // Mettre à jour dans la base de données
+      const { createClientComponentClient } = await import('@supabase/auth-helpers-nextjs');
+      const supabase = createClientComponentClient();
+      
+      const clientUpdateData = {
+        name: updates.name || profile.name,
+        age: updates.age || profile.age,
+        height: updates.height || profile.height
+      };
+      
+      const { error: clientError } = await supabase
+        .from('clients')
+        .update(clientUpdateData)
+        .eq('id', profile.id);
+        
+      if (clientError) {
+        console.error('Error updating client:', clientError);
+        throw clientError;
+      }
       
       setProfile(prev => prev ? { ...prev, ...updates } : null);
-      setMessage({ type: 'success', text: 'Profil mis à jour avec succès !' });
+      setMessage({ type: 'success', text: 'Informations mises à jour avec succès !' });
     } catch (error) {
+      console.error('Error updating profile:', error);
       setMessage({ type: 'error', text: 'Erreur lors de la mise à jour du profil.' });
     } finally {
       setIsSaving(false);
-      setTimeout(() => setMessage(null), 3000);
+      setTimeout(() => setMessage(null), 5000);
     }
   };
 
@@ -180,98 +215,59 @@ export default function ClientSettings() {
         {activeTab === 'profile' && (
           <div className="space-y-6">
             <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Informations personnelles</h3>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">👤 Informations personnelles</h3>
               
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Email en lecture seule */}
+              <div className="mb-6 p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                <label className="block text-sm font-medium text-gray-500 dark:text-gray-400 mb-1">
+                  Adresse email
+                </label>
+                <p className="text-lg font-medium text-gray-900 dark:text-white">{profile.email}</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">L'email ne peut pas être modifié</p>
+              </div>
+              
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Nom complet
+                    Nom complet *
                   </label>
                   <input
                     type="text"
                     value={profile.name}
                     onChange={(e) => setProfile(prev => prev ? { ...prev, name: e.target.value } : null)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="Votre nom complet"
                   />
                 </div>
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Adresse email
-                  </label>
-                  <input
-                    type="email"
-                    value={profile.email}
-                    onChange={(e) => setProfile(prev => prev ? { ...prev, email: e.target.value } : null)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Âge
+                    Âge *
                   </label>
                   <input
                     type="number"
+                    min="1"
+                    max="120"
                     value={profile.age}
-                    onChange={(e) => setProfile(prev => prev ? { ...prev, age: parseInt(e.target.value) } : null)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                    onChange={(e) => setProfile(prev => prev ? { ...prev, age: parseInt(e.target.value) || 0 } : null)}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="25"
                   />
                 </div>
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Taille (cm)
+                    Taille (cm) *
                   </label>
                   <input
                     type="number"
+                    min="100"
+                    max="250"
                     value={profile.height}
-                    onChange={(e) => setProfile(prev => prev ? { ...prev, height: parseInt(e.target.value) } : null)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
+                    onChange={(e) => setProfile(prev => prev ? { ...prev, height: parseInt(e.target.value) || 0 } : null)}
+                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="170"
                   />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Poids actuel (kg)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={profile.currentWeight}
-                    onChange={(e) => setProfile(prev => prev ? { ...prev, currentWeight: parseFloat(e.target.value) } : null)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Poids cible (kg)
-                  </label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={profile.targetWeight}
-                    onChange={(e) => setProfile(prev => prev ? { ...prev, targetWeight: parseFloat(e.target.value) } : null)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
-                  />
-                </div>
-                
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Niveau d'activité
-                  </label>
-                  <select
-                    value={profile.activityLevel}
-                    onChange={(e) => setProfile(prev => prev ? { ...prev, activityLevel: e.target.value as any } : null)}
-                    className="w-full px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg dark:bg-gray-700 dark:text-white"
-                  >
-                    <option value="Sédentaire">Sédentaire (peu ou pas d'exercice)</option>
-                    <option value="Léger">Léger (exercice léger 1-3 jours/semaine)</option>
-                    <option value="Modéré">Modéré (exercice modéré 3-5 jours/semaine)</option>
-                    <option value="Intense">Intense (exercice intense 6-7 jours/semaine)</option>
-                    <option value="Très intense">Très intense (exercice physique très intense)</option>
-                  </select>
                 </div>
               </div>
               
@@ -279,18 +275,18 @@ export default function ClientSettings() {
                 <button
                   onClick={() => updateProfile({
                     name: profile.name,
-                    email: profile.email,
                     age: profile.age,
-                    height: profile.height,
-                    currentWeight: profile.currentWeight,
-                    targetWeight: profile.targetWeight,
-                    activityLevel: profile.activityLevel
+                    height: profile.height
                   })}
-                  disabled={isSaving}
-                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium"
+                  disabled={isSaving || !profile.name.trim() || !profile.age || !profile.height}
+                  className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium transition-colors"
                 >
-                  {isSaving ? 'Enregistrement...' : 'Enregistrer'}
+                  {isSaving ? 'Enregistrement...' : 'Sauvegarder mes informations'}
                 </button>
+              </div>
+              
+              <div className="mt-4 text-xs text-gray-500 dark:text-gray-400">
+                * Champs obligatoires
               </div>
             </div>
 

@@ -623,8 +623,8 @@ export default function ClientDashboard() {
                     </div>
                   </div>
                   <div className="text-4xl font-bold bg-gradient-to-r from-blue-600 to-cyan-600 dark:from-blue-400 dark:to-cyan-400 bg-clip-text text-transparent mb-2">
-                    {displayData.current_weight || 'N/A'}
-                    {displayData.current_weight && 'kg'}
+                    {measurements.length > 0 ? measurements[0].weight : (displayData.current_weight || 'N/A')}
+                    {(measurements.length > 0 || displayData.current_weight) && 'kg'}
                   </div>
                   <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">
                     Objectif: {displayData.target_weight || 'N/A'}{displayData.target_weight && 'kg'}
@@ -975,15 +975,17 @@ export default function ClientDashboard() {
                     </div>
                   </div>
                   
-                  <button className="mt-8 w-full group relative px-6 py-4 bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-2xl font-semibold shadow-2xl shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-105 transition-all duration-300 overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-r from-orange-700 to-red-700 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                    <span className="relative flex items-center justify-center gap-2">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                      Modifier mes informations
-                    </span>
-                  </button>
+                  <Link href="/dashboard/client/settings">
+                    <button className="mt-8 w-full group relative px-6 py-4 bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-2xl font-semibold shadow-2xl shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-105 transition-all duration-300 overflow-hidden">
+                      <div className="absolute inset-0 bg-gradient-to-r from-orange-700 to-red-700 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                      <span className="relative flex items-center justify-center gap-2">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                        </svg>
+                        Modifier mes informations
+                      </span>
+                    </button>
+                  </Link>
                 </div>
               </div>
 
