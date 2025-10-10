@@ -223,23 +223,119 @@ export const dataService = {
 
   // Get programs with full advanced structure
   async getClientProgramsAdvanced(clientId: string) {
-    const { data, error } = await supabase
-      .from('programs')
-      .select(`
-        *,
-        program_days(
+    console.log('[dataService.getClientProgramsAdvanced] Loading advanced programs for client:', clientId);
+    
+    try {
+      // First, try to get programs with the advanced structure
+      const { data, error } = await supabase
+        .from('programs')
+        .select(`
           *,
-          workouts(
+          program_days(
             *,
-            workout_exercises(*)
+            workouts(
+              *,
+              workout_exercises(*)
+            )
           )
-        )
-      `)
-      .eq('client_id', clientId)
-      .order('created_at', { ascending: false })
+        `)
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false })
 
-    if (error) throw error
-    return data
+      if (error) {
+        console.warn('[dataService.getClientProgramsAdvanced] Error with advanced query:', error);
+        console.log('[dataService.getClientProgramsAdvanced] Falling back to basic query...');
+        
+        // Fallback to basic query if advanced tables don't exist
+        const { data: basicData, error: basicError } = await supabase
+          .from('programs')
+          .select('*, exercises(*)')
+          .eq('client_id', clientId)
+          .order('created_at', { ascending: false })
+        
+        if (basicError) throw basicError;
+        return basicData;
+      }
+
+      console.log('[dataService.getClientProgramsAdvanced] Loaded programs:', data);
+      
+      // If we have programs but no program_days, let's try to load program_days separately
+      if (data && data.length > 0) {
+        for (const program of data) {
+          if (!program.program_days || program.program_days.length === 0) {
+            console.log(`[dataService.getClientProgramsAdvanced] No program_days for program ${program.id}, trying separate query...`);
+            
+            const { data: programDaysData, error: daysError } = await supabase
+              .from('program_days')
+              .select(`
+                *,
+                workouts(
+                  *,
+                  workout_exercises(*)
+                )
+              `)
+              .eq('program_id', program.id)
+              .order('day_of_week')
+            
+            if (!daysError && programDaysData && programDaysData.length > 0) {
+              program.program_days = programDaysData;
+              console.log(`[dataService.getClientProgramsAdvanced] Found ${programDaysData.length} program_days for program ${program.id}`);
+            } else {
+              console.log(`[dataService.getClientProgramsAdvanced] No program_days found for program ${program.id}, creating defaults...`);
+              
+              try {
+                const defaultProgramDays = await this.createDefaultProgramDays(program.id);
+                program.program_days = defaultProgramDays;
+                console.log(`[dataService.getClientProgramsAdvanced] Created ${defaultProgramDays.length} default program_days for program ${program.id}`);
+              } catch (createError) {
+                console.error(`[dataService.getClientProgramsAdvanced] Failed to create default program_days for program ${program.id}:`, createError);
+                program.program_days = [];
+              }
+            }
+          }
+        }
+      }
+
+      return data;
+    } catch (error) {
+      console.error('[dataService.getClientProgramsAdvanced] Error:', error);
+      throw error;
+    }
+  },
+
+  // Create default program_days for existing programs that don't have them
+  async createDefaultProgramDays(programId: string) {
+    console.log('[dataService.createDefaultProgramDays] Creating default program_days for program:', programId);
+    
+    const defaultDays = [
+      { day_of_week: 1, day_name: 'Lundi', is_rest_day: false },
+      { day_of_week: 2, day_name: 'Mardi', is_rest_day: false },
+      { day_of_week: 3, day_name: 'Mercredi', is_rest_day: true },
+      { day_of_week: 4, day_name: 'Jeudi', is_rest_day: false },
+      { day_of_week: 5, day_name: 'Vendredi', is_rest_day: false },
+      { day_of_week: 6, day_name: 'Samedi', is_rest_day: true },
+      { day_of_week: 7, day_name: 'Dimanche', is_rest_day: true }
+    ];
+
+    const programDaysData = defaultDays.map(day => ({
+      program_id: programId,
+      day_of_week: day.day_of_week,
+      day_name: day.day_name,
+      is_rest_day: day.is_rest_day
+    }));
+
+    const { data, error } = await supabase
+      .from('program_days')
+      .insert(programDaysData)
+      .select();
+
+    if (error) {
+      console.error('[dataService.createDefaultProgramDays] Error:', error);
+      throw error;
+    }
+
+    console.log('[dataService.createDefaultProgramDays] Created default program_days:', data);
+    return data;
   },
 
   // Get today's workout for a client (for workout interface)
@@ -440,6 +536,24 @@ export const dataService = {
     }
 
     const { data, error } = await query
+
+    if (error) throw error
+    return data
+  },
+
+  // Add a new measurement for a client
+  async addClientMeasurement(measurementData: {
+    client_id: string;
+    date: string;
+    weight: number;
+    body_fat_percentage?: number | null;
+    muscle_mass?: number | null;
+  }) {
+    const { data, error } = await supabase
+      .from('measurements')
+      .insert(measurementData)
+      .select()
+      .single()
 
     if (error) throw error
     return data

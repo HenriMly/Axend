@@ -362,81 +362,218 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white dark:from-gray-900 dark:to-gray-800">
-      {/* Header */}
-      <header className="w-full px-6 py-4 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700">
-        <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <div className="flex items-center space-x-4">
-            <Link href="/dashboard/coach" className="flex items-center space-x-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-              </svg>
-              <span>Retour</span>
-            </Link>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-gray-900 dark:via-slate-900 dark:to-gray-800">
+      {/* Header avec design moderne */}
+      <header className="relative w-full px-6 py-6 bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl border-b border-white/20 dark:border-gray-700/50 shadow-lg shadow-blue-500/5">
+        <div className="absolute inset-0 bg-gradient-to-r from-blue-600/5 via-purple-600/5 to-pink-600/5"></div>
+        <div className="relative max-w-7xl mx-auto">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-6">
+              <Link href="/dashboard/coach" className="group flex items-center space-x-3 px-4 py-2 rounded-xl bg-gray-100/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-700 transition-all duration-200 hover:shadow-lg">
+                <div className="w-8 h-8 rounded-lg bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center group-hover:scale-110 transition-transform duration-200">
+                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                  </svg>
+                </div>
+                <span className="font-medium text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white">Dashboard</span>
+              </Link>
+              
+              <div className="flex items-center space-x-4">
+                <div className="relative">
+                  <div className="w-16 h-16 bg-gradient-to-r from-blue-500 via-purple-600 to-pink-500 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/25">
+                    <span className="text-white font-bold text-xl">
+                      {client.name.charAt(0).toUpperCase()}
+                    </span>
+                  </div>
+                  <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-green-500 rounded-full border-2 border-white dark:border-gray-900 flex items-center justify-center">
+                    <div className="w-2 h-2 bg-white rounded-full"></div>
+                  </div>
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">{client.name}</h1>
+                  <div className="flex items-center space-x-3 mt-1">
+                    <p className="text-sm text-gray-600 dark:text-gray-400">{client.email}</p>
+                    <span className="px-2 py-1 text-xs font-semibold bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 rounded-full">
+                      Actif
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
             <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center">
-                <span className="text-white font-semibold text-lg">
-                  {client.name.charAt(0).toUpperCase()}
-                </span>
-              </div>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900 dark:text-white">{client.name}</h1>
-                <p className="text-sm text-gray-600 dark:text-gray-400">{client.email}</p>
-              </div>
+              <button className="p-3 rounded-xl bg-gray-100/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-700 transition-all duration-200 hover:shadow-lg">
+                <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5 5v-5z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12h16m-7-7l7 7-7 7" />
+                </svg>
+              </button>
+              <button className="p-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white transition-all duration-200 hover:shadow-lg hover:scale-105">
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                </svg>
+              </button>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Client Info Banner */}
-      <div className="max-w-7xl mx-auto px-6 py-6">
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900 dark:text-white">{currentWeightDisplayed}kg</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Poids actuel</div>
+      {/* Stats Cards modernes */}
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {/* Poids actuel */}
+          <div className="group relative bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl p-6 border border-white/20 dark:border-gray-700/30 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all duration-300 hover:shadow-2xl hover:shadow-blue-500/10 hover:-translate-y-2">
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent rounded-3xl"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-r from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 006.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-3 1l-3 9a5.002 5.002 0 006.001 0M18 7l3 9m-3-9l-6-2m0-2v2m0 16V5m0 16l3-3m-3 3l-3-3" />
+                  </svg>
+                </div>
+                <div className="text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-100/50 dark:bg-blue-900/30 px-2 py-1 rounded-full">
+                  ACTUEL
+                </div>
+              </div>
+              <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-blue-800 dark:from-blue-400 dark:to-blue-600 bg-clip-text text-transparent mb-1">
+                {currentWeightDisplayed}kg
+              </div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">Poids actuel</div>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900 dark:text-white">{targetWeightDisplayed}kg</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Objectif</div>
+          </div>
+
+          {/* Objectif */}
+          <div className="group relative bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl p-6 border border-white/20 dark:border-gray-700/30 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all duration-300 hover:shadow-2xl hover:shadow-purple-500/10 hover:-translate-y-2">
+            <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent rounded-3xl"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-r from-purple-500 to-purple-600 flex items-center justify-center shadow-lg shadow-purple-500/25">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z" />
+                  </svg>
+                </div>
+                <div className="text-xs font-semibold text-purple-600 dark:text-purple-400 bg-purple-100/50 dark:bg-purple-900/30 px-2 py-1 rounded-full">
+                  CIBLE
+                </div>
+              </div>
+              <div className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-purple-800 dark:from-purple-400 dark:to-purple-600 bg-clip-text text-transparent mb-1">
+                {targetWeightDisplayed}kg
+              </div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">Objectif</div>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900 dark:text-white">{client.age} ans</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Âge</div>
+          </div>
+
+          {/* Âge */}
+          <div className="group relative bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl p-6 border border-white/20 dark:border-gray-700/30 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all duration-300 hover:shadow-2xl hover:shadow-green-500/10 hover:-translate-y-2">
+            <div className="absolute inset-0 bg-gradient-to-br from-green-500/5 to-transparent rounded-3xl"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-r from-green-500 to-green-600 flex items-center justify-center shadow-lg shadow-green-500/25">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  </svg>
+                </div>
+                <div className="text-xs font-semibold text-green-600 dark:text-green-400 bg-green-100/50 dark:bg-green-900/30 px-2 py-1 rounded-full">
+                  PROFIL
+                </div>
+              </div>
+              <div className="text-3xl font-bold bg-gradient-to-r from-green-600 to-green-800 dark:from-green-400 dark:to-green-600 bg-clip-text text-transparent mb-1">
+                {client.age}
+              </div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">ans</div>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-gray-900 dark:text-white">{client.height}cm</div>
-              <div className="text-sm text-gray-600 dark:text-gray-400">Taille</div>
+          </div>
+
+          {/* Taille */}
+          <div className="group relative bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl p-6 border border-white/20 dark:border-gray-700/30 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all duration-300 hover:shadow-2xl hover:shadow-orange-500/10 hover:-translate-y-2">
+            <div className="absolute inset-0 bg-gradient-to-br from-orange-500/5 to-transparent rounded-3xl"></div>
+            <div className="relative">
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-r from-orange-500 to-orange-600 flex items-center justify-center shadow-lg shadow-orange-500/25">
+                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 4V2a1 1 0 011-1h8a1 1 0 011 1v2m-9 4v10a2 2 0 002 2h6a2 2 0 002-2V8M9 8h6" />
+                  </svg>
+                </div>
+                <div className="text-xs font-semibold text-orange-600 dark:text-orange-400 bg-orange-100/50 dark:bg-orange-900/30 px-2 py-1 rounded-full">
+                  TAILLE
+                </div>
+              </div>
+              <div className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-orange-800 dark:from-orange-400 dark:to-orange-600 bg-clip-text text-transparent mb-1">
+                {client.height}
+              </div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">cm</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Barre de progression globale */}
+        <div className="mt-8 bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl p-6 border border-white/20 dark:border-gray-700/30">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-lg font-semibold bg-gradient-to-r from-gray-900 to-gray-700 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+                Progression vers l'objectif
+              </h3>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                {currentWeightDisplayed}kg → {targetWeightDisplayed}kg
+              </p>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                {weightPercent}%
+              </div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {Math.abs(currentWeightDisplayed - targetWeightDisplayed).toFixed(1)}kg restants
+              </div>
+            </div>
+          </div>
+          <div className="relative">
+            <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500 rounded-full transition-all duration-700 ease-out"
+                style={{ width: `${weightPercent}%` }}
+              >
+                <div className="h-full bg-gradient-to-r from-transparent via-white/20 to-transparent animate-pulse"></div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Tabs */}
+      {/* Navigation tabs moderne */}
       <div className="max-w-7xl mx-auto px-6">
-        <div className="border-b border-gray-200 dark:border-gray-700">
-          <nav className="-mb-px flex space-x-8">
-            {[
-              { id: 'overview', name: 'Vue d\'ensemble', icon: '📊' },
-              { id: 'workouts', name: 'Entraînements', icon: '💪' },
-              { id: 'progress', name: 'Évolution', icon: '📈' },
-              { id: 'programs', name: 'Programmes', icon: '📋' },
-              { id: 'goals', name: 'Objectifs', icon: '🎯' },
-              { id: 'personal', name: 'Infos personnelles', icon: '👤' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
-                  activeTab === tab.id
-                    ? 'border-blue-500 text-blue-600 dark:text-blue-400'
-                    : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'
-                }`}
-              >
-                <span className="mr-2">{tab.icon}</span>
-                {tab.name}
-              </button>
-            ))}
+        <div className="relative bg-white/40 dark:bg-gray-800/40 backdrop-blur-xl rounded-2xl p-2 border border-white/20 dark:border-gray-700/30">
+          <nav className="flex overflow-x-auto scrollbar-hide">
+            <div className="flex space-x-1 min-w-max">
+              {[
+                { id: 'overview', name: 'Vue d\'ensemble', icon: '📊', gradient: 'from-blue-500 to-cyan-500' },
+                { id: 'workouts', name: 'Entraînements', icon: '💪', gradient: 'from-purple-500 to-pink-500' },
+                { id: 'progress', name: 'Évolution', icon: '📈', gradient: 'from-green-500 to-emerald-500' },
+                { id: 'programs', name: 'Programmes', icon: '📋', gradient: 'from-orange-500 to-red-500' },
+                { id: 'goals', name: 'Objectifs', icon: '🎯', gradient: 'from-indigo-500 to-purple-500' },
+                { id: 'personal', name: 'Infos personnelles', icon: '👤', gradient: 'from-pink-500 to-rose-500' },
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`relative flex items-center space-x-3 px-6 py-3 rounded-xl font-medium text-sm whitespace-nowrap transition-all duration-300 group ${
+                    activeTab === tab.id
+                      ? `bg-gradient-to-r ${tab.gradient} text-white shadow-lg shadow-${tab.gradient.split('-')[1]}-500/25 transform scale-105`
+                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-gray-700/60'
+                  }`}
+                >
+                  {activeTab === tab.id && (
+                    <div className="absolute inset-0 bg-white/20 rounded-xl animate-pulse"></div>
+                  )}
+                  <span className={`text-lg transition-transform duration-300 ${activeTab === tab.id ? 'scale-110' : 'group-hover:scale-105'}`}>
+                    {tab.icon}
+                  </span>
+                  <span className="relative z-10 font-semibold">{tab.name}</span>
+                  {activeTab === tab.id && (
+                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-yellow-400 rounded-full animate-bounce"></div>
+                  )}
+                </button>
+              ))}
+            </div>
           </nav>
         </div>
       </div>
@@ -446,9 +583,26 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
         {activeTab === 'overview' && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
             {/* Derniers entraînements */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700">
-              <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Derniers entraînements</h3>
+            <div className="group bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl border border-white/20 dark:border-gray-700/30 overflow-hidden hover:shadow-2xl hover:shadow-blue-500/10 transition-all duration-500">
+              <div className="relative p-6 bg-gradient-to-r from-blue-500/5 via-purple-500/5 to-transparent">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center shadow-lg">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-700 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+                        Derniers entraînements
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Activité récente</p>
+                    </div>
+                  </div>
+                  <div className="px-3 py-1 bg-blue-100/50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs font-semibold rounded-full">
+                    {client.workouts.length} séances
+                  </div>
+                </div>
               </div>
               <div className="p-6 space-y-4">
                 {client.workouts.slice(0, 3).map((workout) => {
@@ -458,49 +612,62 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                   const notesPreview = workout.notes ? (String(workout.notes).length > 80 ? String(workout.notes).slice(0, 77) + '...' : String(workout.notes)) : '';
 
                   return (
-                    <div key={workout.id || `${workout.date}-${workout.program}`} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                      <div>
-                        <div className="font-medium text-gray-900 dark:text-white">{workout.program}</div>
-                        <div className="text-sm text-gray-600 dark:text-gray-400">
-                          {new Date(workout.date).toLocaleDateString('fr-FR')} • {workout.duration}min
+                    <div key={workout.id || `${workout.date}-${workout.program}`} className="group relative bg-gradient-to-r from-white/80 to-gray-50/80 dark:from-gray-700/80 dark:to-gray-800/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-200/50 dark:border-gray-600/50 hover:shadow-lg hover:shadow-blue-500/5 transition-all duration-300 hover:-translate-y-1">
+                      <div className="absolute inset-0 bg-gradient-to-r from-blue-500/0 via-purple-500/0 to-pink-500/0 group-hover:from-blue-500/5 group-hover:via-purple-500/5 group-hover:to-pink-500/5 rounded-2xl transition-all duration-300"></div>
+                      <div className="relative flex items-center justify-between">
+                        <div className="flex items-center space-x-4">
+                          <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                          </div>
+                          <div>
+                            <div className="font-bold text-gray-900 dark:text-white text-lg">{workout.program}</div>
+                            <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center space-x-2">
+                              <span>📅 {new Date(workout.date).toLocaleDateString('fr-FR')}</span>
+                              <span>•</span>
+                              <span>⏱️ {workout.duration}min</span>
+                            </div>
+                            {notesPreview && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 bg-gray-100/50 dark:bg-gray-800/50 px-2 py-1 rounded-lg">💬 {notesPreview}</div>}
+                          </div>
                         </div>
-                        {notesPreview && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">Notes: {notesPreview}</div>}
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm font-medium text-gray-900 dark:text-white">
-                          {exercisesCount} exercice(s)
-                        </div>
-                        <div className="mt-2 space-x-2">
-                          <button onClick={() => {
-                            // try to find corresponding index in workoutSessions to allow editing
-                            const idx = workoutSessions.findIndex(s => s.id && workout.id && String(s.id) === String(workout.id));
-                            setEditingIndex(idx >= 0 ? idx : null);
-                            setEditingWorkout(workout);
-                          }} className="text-sm text-blue-600 hover:underline mr-2">Éditer</button>
-                          <button onClick={async () => {
-                            if (!confirm('Supprimer cette séance ?')) return;
-                            try {
-                              if (workout.id) {
-                                const res = await fetch('/api/workout-sessions', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: workout.id }) });
-                                const j = await res.json();
-                                if (!res.ok) {
-                                  console.error('Failed to delete session', j);
-                                  alert('Impossible de supprimer la séance');
-                                  return;
+                        <div className="text-right">
+                          <div className="px-3 py-1 bg-gradient-to-r from-green-100 to-emerald-100 dark:from-green-900/30 dark:to-emerald-900/30 text-green-700 dark:text-green-400 text-sm font-semibold rounded-full mb-3">
+                            {exercisesCount} exercices
+                          </div>
+                          <div className="flex space-x-2">
+                            <button onClick={() => {
+                              const idx = workoutSessions.findIndex(s => s.id && workout.id && String(s.id) === String(workout.id));
+                              setEditingIndex(idx >= 0 ? idx : null);
+                              setEditingWorkout(workout);
+                            }} className="px-3 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-semibold rounded-lg hover:scale-105 transition-all duration-200">
+                              ✏️ Éditer
+                            </button>
+                            <button onClick={async () => {
+                              if (!confirm('Supprimer cette séance ?')) return;
+                              try {
+                                if (workout.id) {
+                                  const res = await fetch('/api/workout-sessions', { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: workout.id }) });
+                                  const j = await res.json();
+                                  if (!res.ok) {
+                                    console.error('Failed to delete session', j);
+                                    alert('Impossible de supprimer la séance');
+                                    return;
+                                  }
+                                  setWorkoutSessions(prev => prev.filter(s => String(s.id) !== String(workout.id)));
+                                  setClient(prev => prev ? { ...prev, workouts: (prev.workouts || []).filter(w => String(w.id) !== String(workout.id)) } : prev);
+                                } else {
+                                  setWorkoutSessions(prev => prev.filter(s => !(s.date === workout.date && s.program === workout.program && s.duration === workout.duration)));
+                                  setClient(prev => prev ? { ...prev, workouts: (prev.workouts || []).filter(w => !(w.date === workout.date && w.program === workout.program && w.duration === workout.duration)) } : prev);
                                 }
-                                // remove from both workoutSessions and client.workouts
-                                setWorkoutSessions(prev => prev.filter(s => String(s.id) !== String(workout.id)));
-                                setClient(prev => prev ? { ...prev, workouts: (prev.workouts || []).filter(w => String(w.id) !== String(workout.id)) } : prev);
-                              } else {
-                                // local-only: remove from UI by matching date/program
-                                setWorkoutSessions(prev => prev.filter(s => !(s.date === workout.date && s.program === workout.program && s.duration === workout.duration)));
-                                setClient(prev => prev ? { ...prev, workouts: (prev.workouts || []).filter(w => !(w.date === workout.date && w.program === workout.program && w.duration === workout.duration)) } : prev);
+                              } catch (e) {
+                                console.error('Delete request failed', e);
+                                alert('Erreur lors de la suppression');
                               }
-                            } catch (e) {
-                              console.error('Delete request failed', e);
-                              alert('Erreur lors de la suppression');
-                            }
-                          }} className="text-sm text-red-600 hover:underline">Supprimer</button>
+                            }} className="px-3 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 text-xs font-semibold rounded-lg hover:scale-105 transition-all duration-200">
+                              🗑️ Supprimer
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -510,20 +677,50 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
             </div>
 
             {/* Programmes actifs */}
-            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700">
-              <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Programmes actifs</h3>
+            <div className="group bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl border border-white/20 dark:border-gray-700/30 overflow-hidden hover:shadow-2xl hover:shadow-purple-500/10 transition-all duration-500">
+              <div className="relative p-6 bg-gradient-to-r from-purple-500/5 via-pink-500/5 to-transparent">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-3">
+                    <div className="w-10 h-10 rounded-2xl bg-gradient-to-r from-purple-500 to-pink-600 flex items-center justify-center shadow-lg">
+                      <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-700 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
+                        Programmes actifs
+                      </h3>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">Suivi en temps réel</p>
+                    </div>
+                  </div>
+                  <div className="px-3 py-1 bg-purple-100/50 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-xs font-semibold rounded-full">
+                    {client.programs.length} programmes
+                  </div>
+                </div>
               </div>
               <div className="p-6 space-y-4">
                 {client.programs.map((program, index) => (
-                  <div key={index} className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                    <div>
-                      <div className="font-medium text-gray-900 dark:text-white">{program}</div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">En cours</div>
+                  <div key={index} className="group relative bg-gradient-to-r from-white/80 to-gray-50/80 dark:from-gray-700/80 dark:to-gray-800/80 backdrop-blur-sm rounded-2xl p-4 border border-gray-200/50 dark:border-gray-600/50 hover:shadow-lg hover:shadow-purple-500/5 transition-all duration-300 hover:-translate-y-1">
+                    <div className="absolute inset-0 bg-gradient-to-r from-purple-500/0 via-pink-500/0 to-orange-500/0 group-hover:from-purple-500/5 group-hover:via-pink-500/5 group-hover:to-orange-500/5 rounded-2xl transition-all duration-300"></div>
+                    <div className="relative flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-r from-purple-500 to-pink-600 flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform duration-300">
+                          <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                        </div>
+                        <div>
+                          <div className="font-bold text-gray-900 dark:text-white text-lg">{program}</div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400 flex items-center space-x-2">
+                            <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                            <span>En cours</span>
+                          </div>
+                        </div>
+                      </div>
+                      <button className="px-4 py-2 bg-gradient-to-r from-purple-500/10 to-pink-500/10 hover:from-purple-500/20 hover:to-pink-500/20 text-purple-600 dark:text-purple-400 font-semibold rounded-xl border border-purple-200/50 dark:border-purple-600/30 hover:scale-105 transition-all duration-200">
+                        ⚙️ Modifier
+                      </button>
                     </div>
-                    <button className="px-3 py-1 text-sm font-medium text-blue-600 hover:text-blue-700 border border-blue-200 hover:border-blue-300 rounded-md">
-                      Modifier
-                    </button>
                   </div>
                 ))}
               </div>
@@ -750,42 +947,93 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
 
             {/* Statistiques d'entraînement */}
             {workoutSessions.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                        {Math.round((workoutSessions.filter(s => s.status === 'completed').length / workoutSessions.length) * 100)}%
-                      </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">Assiduité</div>
-                    </div>
-                    <div className="text-green-500 text-3xl">📊</div>
+              <div className="lg:col-span-2">
+                <div className="bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl border border-white/20 dark:border-gray-700/30 overflow-hidden mb-6">
+                  <div className="p-6 bg-gradient-to-r from-indigo-500/5 via-purple-500/5 to-transparent">
+                    <h3 className="text-lg font-bold bg-gradient-to-r from-gray-900 to-gray-700 dark:from-white dark:to-gray-300 bg-clip-text text-transparent mb-2">
+                      📈 Statistiques d'entraînement
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Performance globale du client</p>
                   </div>
-                </div>
-                
-                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                        {workoutSessions.filter(s => s.status === 'completed').length}
+                  
+                  <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Assiduité */}
+                    <div className="group relative bg-gradient-to-br from-emerald-50 to-green-100 dark:from-emerald-900/20 dark:to-green-900/30 rounded-2xl p-6 hover:shadow-lg hover:shadow-green-500/10 transition-all duration-300 hover:-translate-y-1">
+                      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/10 to-green-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                      <div className="relative">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 flex items-center justify-center shadow-lg shadow-green-500/25">
+                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                            </svg>
+                          </div>
+                          <div className="text-xs font-semibold text-green-600 dark:text-green-400 bg-green-100/50 dark:bg-green-900/30 px-2 py-1 rounded-full">
+                            ASSIDUITÉ
+                          </div>
+                        </div>
+                        <div className="text-3xl font-bold bg-gradient-to-r from-emerald-600 to-green-600 bg-clip-text text-transparent mb-1">
+                          {Math.round((workoutSessions.filter(s => s.status === 'completed').length / workoutSessions.length) * 100)}%
+                        </div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">Taux de réalisation</div>
+                        <div className="mt-3 w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                          <div 
+                            className="bg-gradient-to-r from-emerald-500 to-green-500 h-2 rounded-full transition-all duration-700"
+                            style={{ width: `${Math.round((workoutSessions.filter(s => s.status === 'completed').length / workoutSessions.length) * 100)}%` }}
+                          ></div>
+                        </div>
                       </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">Séances réalisées</div>
                     </div>
-                    <div className="text-blue-500 text-3xl">💪</div>
-                  </div>
-                </div>
-                
-                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                        {workoutSessions.filter(s => s.status === 'completed').length > 0 
-                          ? Math.round(workoutSessions.filter(s => s.status === 'completed').reduce((acc, s) => acc + s.duration, 0) / workoutSessions.filter(s => s.status === 'completed').length)
-                          : 0}min
+
+                    {/* Séances réalisées */}
+                    <div className="group relative bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-blue-900/20 dark:to-indigo-900/30 rounded-2xl p-6 hover:shadow-lg hover:shadow-blue-500/10 transition-all duration-300 hover:-translate-y-1">
+                      <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-indigo-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                      <div className="relative">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-r from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-blue-500/25">
+                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                            </svg>
+                          </div>
+                          <div className="text-xs font-semibold text-blue-600 dark:text-blue-400 bg-blue-100/50 dark:bg-blue-900/30 px-2 py-1 rounded-full">
+                            SÉANCES
+                          </div>
+                        </div>
+                        <div className="text-3xl font-bold bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent mb-1">
+                          {workoutSessions.filter(s => s.status === 'completed').length}
+                        </div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">Réalisées</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          sur {workoutSessions.length} programmées
+                        </div>
                       </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">Durée moyenne</div>
                     </div>
-                    <div className="text-purple-500 text-3xl">⏱️</div>
+
+                    {/* Durée moyenne */}
+                    <div className="group relative bg-gradient-to-br from-purple-50 to-pink-100 dark:from-purple-900/20 dark:to-pink-900/30 rounded-2xl p-6 hover:shadow-lg hover:shadow-purple-500/10 transition-all duration-300 hover:-translate-y-1">
+                      <div className="absolute inset-0 bg-gradient-to-br from-purple-500/10 to-pink-500/10 rounded-2xl opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                      <div className="relative">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="w-12 h-12 rounded-2xl bg-gradient-to-r from-purple-500 to-pink-600 flex items-center justify-center shadow-lg shadow-purple-500/25">
+                            <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+                          <div className="text-xs font-semibold text-purple-600 dark:text-purple-400 bg-purple-100/50 dark:bg-purple-900/30 px-2 py-1 rounded-full">
+                            DURÉE
+                          </div>
+                        </div>
+                        <div className="text-3xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-1">
+                          {workoutSessions.filter(s => s.status === 'completed').length > 0 
+                            ? Math.round(workoutSessions.filter(s => s.status === 'completed').reduce((acc, s) => acc + s.duration, 0) / workoutSessions.filter(s => s.status === 'completed').length)
+                            : 0}
+                          <span className="text-lg">min</span>
+                        </div>
+                        <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">Moyenne par séance</div>
+                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                          Total: {Math.round(workoutSessions.filter(s => s.status === 'completed').reduce((acc, s) => acc + s.duration, 0) / 60)}h
+                        </div>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
