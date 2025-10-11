@@ -225,13 +225,34 @@ export default function ClientProgress() {
                 <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Poids actuel</p>
                 <p className="text-3xl font-bold text-gray-900 dark:text-white">{measurements[0]?.weight}kg</p>
                 {weightTrend && (
-                  <div className={`flex items-center mt-2 text-sm ${
-                    weightTrend.direction === 'up' ? 'text-green-600' : 
-                    weightTrend.direction === 'down' ? 'text-red-600' : 'text-gray-600'
-                  }`}>
-                    {weightTrend.direction === 'up' ? '↗' : weightTrend.direction === 'down' ? '↘' : '→'}
-                    <span className="ml-1">{weightTrend.value.toFixed(1)}kg</span>
-                  </div>
+                  (() => {
+                    // Infer primary weight goal if present
+                    const weightGoal = goals.find(g => /poids|weight|Poids cible/i.test(g.title) || (g.unit && String(g.unit).toLowerCase().includes('kg')));
+                    const hasTarget = !!(weightGoal && weightGoal.target);
+                    const current = measurements[0]?.weight ?? null;
+                    const target = weightGoal ? weightGoal.target : null;
+                    const gainIsPositive = hasTarget && current != null ? (current < (target as number)) : null;
+
+                    const diff = measurements.length >= 2 ? (measurements[0].weight - measurements[1].weight) : 0;
+                    let sym = '→';
+                    let color = 'text-gray-600';
+                    if (diff > 0) {
+                      sym = '↗';
+                      if (gainIsPositive === null) color = 'text-red-600';
+                      else color = gainIsPositive ? 'text-green-600' : 'text-red-600';
+                    } else if (diff < 0) {
+                      sym = '↘';
+                      if (gainIsPositive === null) color = 'text-green-600';
+                      else color = gainIsPositive ? 'text-red-600' : 'text-green-600';
+                    }
+
+                    return (
+                      <div className={`flex items-center mt-2 text-sm ${color}`}>
+                        {sym}
+                        <span className="ml-1">{Math.abs(weightTrend.value).toFixed(1)}kg</span>
+                      </div>
+                    );
+                  })()
                 )}
               </div>
               <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center">

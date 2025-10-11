@@ -152,7 +152,9 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
           age: data.age || 0,
           height: data.height || 0,
           workouts: [], // À corriger plus tard quand la table workouts sera créée
-          measurements: (data.measurements || []).map((m: any) => ({ date: m.date, weight: m.weight, bodyFat: m.body_fat, muscle: m.muscle_mass }))
+          measurements: (data.measurements || [])
+            .map((m: any) => ({ date: m.date, weight: typeof m.weight === 'number' ? m.weight : parseFloat(m.weight), bodyFat: typeof m.body_fat === 'number' ? m.body_fat : (m.body_fat != null ? parseFloat(m.body_fat) : undefined), muscle: typeof m.muscle_mass === 'number' ? m.muscle_mass : (m.muscle_mass != null ? parseFloat(m.muscle_mass) : undefined) }))
+            .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
         };
 
         setClient(mapped);
@@ -336,6 +338,9 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
     
     return Math.max(0, Math.min(100, Math.round((currentProgress / totalProgress) * 100)));
   })();
+
+  // Precompute measurements sorted newest-first for rendering and reuse
+  const sortedMeasurements: Measurement[] = (client?.measurements ?? []).slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   if (isLoading) {
     return (
@@ -1074,11 +1079,28 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {client.measurements.map((measurement, index) => {
-                      const previousMeasurement = index < client.measurements.length - 1 ? client.measurements[index + 1] : null;
-                      const weightChange = previousMeasurement ? measurement.weight - previousMeasurement.weight : 0;
+                    {sortedMeasurements.map((measurement, index) => {
+                      const previousMeasurement = index < sortedMeasurements.length - 1 ? sortedMeasurements[index + 1] : null;
+                      const delta = previousMeasurement ? (measurement.weight - previousMeasurement.weight) : 0; // positive = increase vs previous
                       const isLatest = index === 0;
-                      
+                      // Determine whether gaining weight is desirable based on target
+                      const hasTarget = !!(targetWeightDisplayed && targetWeightDisplayed > 0);
+                      const gainIsPositive = hasTarget ? (currentWeightDisplayed < targetWeightDisplayed) : null;
+
+                      // Determine arrow and color: arrow up when delta > 0 (increase), down when delta < 0 (decrease)
+                      let arrowSymbol = '→';
+                      let changeColorClass = 'text-gray-600 dark:text-gray-400';
+                      if (delta > 0) {
+                        arrowSymbol = '↗';
+                        // If we know whether gain is desirable, show green when gain moves toward target
+                        if (gainIsPositive === null) changeColorClass = 'text-red-600 dark:text-red-400';
+                        else changeColorClass = gainIsPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
+                      } else if (delta < 0) {
+                        arrowSymbol = '↘';
+                        if (gainIsPositive === null) changeColorClass = 'text-green-600 dark:text-green-400';
+                        else changeColorClass = gainIsPositive ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400';
+                      }
+
                       return (
                         <div key={index} className={`group relative p-6 rounded-2xl border-2 transition-all duration-300 hover:shadow-lg ${
                           isLatest 
@@ -1128,13 +1150,9 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                                     {measurement.weight}kg
                                   </div>
                                   {previousMeasurement && (
-                                    <div className={`text-sm font-medium flex items-center justify-center mt-1 ${
-                                      weightChange > 0 ? 'text-red-600 dark:text-red-400' :
-                                      weightChange < 0 ? 'text-green-600 dark:text-green-400' :
-                                      'text-gray-600 dark:text-gray-400'
-                                    }`}>
-                                      {weightChange > 0 ? '↗' : weightChange < 0 ? '↘' : '→'}
-                                      <span className="ml-1">{Math.abs(weightChange).toFixed(1)}kg</span>
+                                    <div className={`text-sm font-medium flex items-center justify-center mt-1 ${changeColorClass}`}>
+                                      {arrowSymbol}
+                                      <span className="ml-1">{Math.abs(delta).toFixed(1)}kg</span>
                                     </div>
                                   )}
                                 </div>
@@ -1188,20 +1206,48 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                     })}
                     
                     {/* Statistiques globales */}
-                    {client.measurements.length >= 2 && (
+                    {sortedMeasurements.length >= 2 && (
                       <div className="mt-8 p-6 bg-gradient-to-r from-gray-50 to-blue-50 dark:from-gray-800 dark:to-blue-900/20 rounded-2xl border border-gray-200 dark:border-gray-700">
                         <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">📊 Statistiques globales</h4>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                           <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-xl">
                             <div className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">Évolution totale</div>
-                            <div className={`text-2xl font-bold ${
-                              client.measurements[0].weight < client.measurements[client.measurements.length - 1].weight
-                                ? 'text-green-600 dark:text-green-400'
-                                : 'text-red-600 dark:text-red-400'
-                            }`}>
-                              {client.measurements[0].weight < client.measurements[client.measurements.length - 1].weight ? '↘' : '↗'}
-                              {Math.abs(client.measurements[0].weight - client.measurements[client.measurements.length - 1].weight).toFixed(1)}kg
-                            </div>
+                            <div className={`text-2xl font-bold ${(() => {
+                                try {
+                                  const latest = sortedMeasurements[0].weight;
+                                  const earliest = sortedMeasurements[sortedMeasurements.length - 1].weight;
+                                  const totalChange = latest - earliest; // positive = overall increase
+                                  // Determine desirability: if target exists and current < target, gains are positive
+                                  const hasTarget = !!(targetWeightDisplayed && targetWeightDisplayed > 0);
+                                  const gainIsPositive = hasTarget ? (currentWeightDisplayed < targetWeightDisplayed) : null;
+                                  if (totalChange > 0) {
+                                    // overall increase
+                                    if (gainIsPositive === null) return 'text-green-600 dark:text-green-400';
+                                    return gainIsPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400';
+                                  } else if (totalChange < 0) {
+                                    // overall decrease
+                                    if (gainIsPositive === null) return 'text-red-600 dark:text-red-400';
+                                    return gainIsPositive ? 'text-red-600 dark:text-red-400' : 'text-green-600 dark:text-green-400';
+                                  }
+                                } catch (e) {
+                                  return 'text-gray-600 dark:text-gray-400';
+                                }
+                                return 'text-gray-600 dark:text-gray-400';
+                              })()}`}> 
+                                {(() => {
+                                  try {
+                                    const latest = sortedMeasurements[0].weight;
+                                    const earliest = sortedMeasurements[sortedMeasurements.length - 1].weight;
+                                    const totalChange = latest - earliest;
+                                    // Determine arrow based on change: increase -> ↗, decrease -> ↘
+                                    if (totalChange > 0) return '↗' + Math.abs(totalChange).toFixed(1) + 'kg';
+                                    if (totalChange < 0) return '↘' + Math.abs(totalChange).toFixed(1) + 'kg';
+                                  } catch (e) {
+                                    return '0.0kg';
+                                  }
+                                  return '0.0kg';
+                                })()}
+                              </div>
                           </div>
                           
                           <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-xl">
@@ -1288,34 +1334,72 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                         }
                         
                         try {
-                          console.log('Loading program details from database...');
-                          // Récupérer les programmes complets du client
-                          const programs = await dataService.getClientPrograms(client.id);
-                          console.log('Programs loaded:', programs);
-                          
-                          // Trouver le programme par nom
-                          const fullProgram = programs.find((p: any) => p.name === program);
-                          
+                          console.log('Loading program details from database (advanced)...');
+                          // Try advanced fetch that includes program_days and workouts
+                          let programsAdvanced: any[] | null = null;
+                          try {
+                            programsAdvanced = await dataService.getClientProgramsAdvanced(client.id);
+                            console.log('Programs (advanced) loaded:', programsAdvanced && programsAdvanced.length);
+                          } catch (advErr) {
+                            console.debug('getClientProgramsAdvanced failed or not available:', advErr);
+                            programsAdvanced = null;
+                          }
+
+                          let fullProgram: any = null;
+                          if (programsAdvanced && programsAdvanced.length) {
+                            fullProgram = programsAdvanced.find((p: any) => p.name === program || p.id === program) || null;
+                          }
+
+                          // Fallback to legacy simple programs if advanced not available or not found
+                          if (!fullProgram) {
+                            console.log('Falling back to simple programs fetch...');
+                            const programs = await dataService.getClientPrograms(client.id);
+                            console.log('Programs (simple) loaded:', programs);
+                            fullProgram = programs.find((p: any) => p.name === program || p.id === program) || null;
+                          }
+
                           if (fullProgram) {
-                            console.log('Found full program data:', fullProgram);
+                            console.log('Found full program data for editing:', fullProgram);
+                            // Ensure program_days exists (normalize older shape)
+                            if (!fullProgram.program_days || fullProgram.program_days.length === 0) {
+                              // If the program has an id, try to fetch program_days explicitly
+                              if (fullProgram.id) {
+                                try {
+                                  const days = await dataService.getProgramDays(fullProgram.id);
+                                  if (days && days.length) {
+                                    fullProgram.program_days = days;
+                                    console.log('Loaded program_days via getProgramDays:', days.length);
+                                  } else {
+                                    fullProgram.program_days = fullProgram.days || fullProgram.programDays || [];
+                                  }
+                                } catch (daysErr) {
+                                  console.debug('getProgramDays failed:', daysErr);
+                                  fullProgram.program_days = fullProgram.days || fullProgram.programDays || [];
+                                }
+                              } else {
+                                fullProgram.program_days = fullProgram.days || fullProgram.programDays || [];
+                              }
+                            }
                             setEditingProgram(fullProgram);
                           } else {
-                            console.warn('Program not found in database, using fallback');
-                            // Fallback avec les données minimales
+                            console.warn('Program not found in database, using minimal fallback');
+                            // Fallback minimal shape used by ProgramForm
                             const programToEdit = { 
                               name: program,
                               client_id: client.id,
-                              coach_id: userProfile?.id 
+                              coach_id: userProfile?.id,
+                              program_days: []
                             };
                             setEditingProgram(programToEdit);
                           }
                         } catch (error) {
                           console.error('Error loading program details:', error);
-                          // Fallback en cas d'erreur
+                          // Fallback minimal
                           const programToEdit = { 
                             name: program,
                             client_id: client.id,
-                            coach_id: userProfile?.id 
+                            coach_id: userProfile?.id,
+                            program_days: []
                           };
                           setEditingProgram(programToEdit);
                         }
@@ -1897,7 +1981,9 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                   // reload measurements
                   try {
                     const re = await dataService.getClientDetail(client!.id);
-                    const mappedMeasurements = (re.measurements || []).map((m: any) => ({ date: m.date, weight: typeof m.weight === 'number' ? m.weight : parseFloat(m.weight), bodyFat: typeof m.body_fat === 'number' ? m.body_fat : (m.body_fat != null ? parseFloat(m.body_fat) : undefined), muscle: typeof m.muscle_mass === 'number' ? m.muscle_mass : (m.muscle_mass != null ? parseFloat(m.muscle_mass) : undefined) }));
+                    const mappedMeasurements = (re.measurements || [])
+                      .map((m: any) => ({ date: m.date, weight: typeof m.weight === 'number' ? m.weight : parseFloat(m.weight), bodyFat: typeof m.body_fat === 'number' ? m.body_fat : (m.body_fat != null ? parseFloat(m.body_fat) : undefined), muscle: typeof m.muscle_mass === 'number' ? m.muscle_mass : (m.muscle_mass != null ? parseFloat(m.muscle_mass) : undefined) }))
+                      .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
                     setClient(prev => prev ? { ...prev, measurements: mappedMeasurements } : prev);
                     setMessage({ type: 'success', text: 'Mesure supprimée' });
                     setDeletingMeasurementDate(null);
@@ -1964,18 +2050,41 @@ function MeasurementForm({ clientId, onCancel, onSaved }: MeasurementFormProps) 
       console.log('Sending measurement data:', measurementData);
       
       // Utiliser le service de données
-      const result = await dataService.addClientMeasurement(measurementData);
-      console.log('Measurement added successfully:', result);
-      
-      // Créer l'objet mesure pour l'état local
+      let saved: any = null;
+      try {
+        const result = await dataService.addClientMeasurement(measurementData);
+        console.log('Measurement added successfully (dataService):', result);
+        saved = result;
+      } catch (primaryErr) {
+        console.warn('dataService.addClientMeasurement failed, trying client-side supabase upsert as fallback', primaryErr);
+        try {
+          const { createClientComponentClient } = await import('@supabase/auth-helpers-nextjs');
+          const supabase = createClientComponentClient();
+          const { data: upserted, error: upsertErr } = await supabase
+            .from('measurements')
+            .upsert(measurementData, { onConflict: 'client_id,date' })
+            .select()
+            .single();
+          if (upsertErr) {
+            console.error('Fallback upsert error:', upsertErr);
+            throw upsertErr;
+          }
+          console.log('Measurement upserted via client supabase fallback:', upserted);
+          saved = upserted;
+        } catch (fallbackErr) {
+          console.error('Both primary and fallback measurement save failed', fallbackErr);
+          throw fallbackErr;
+        }
+      }
+
+      // Normalize returned row (saved may be the input object or DB row)
       const newMeasurement = {
-        date: measurementData.date,
-        weight: measurementData.weight,
-        body_fat: measurementData.body_fat,
-        muscle_mass: measurementData.muscle_mass
+        date: saved?.date ?? measurementData.date,
+        weight: typeof saved?.weight === 'number' ? saved.weight : measurementData.weight,
+        body_fat: typeof saved?.body_fat === 'number' ? saved.body_fat : (measurementData.body_fat ?? null),
+        muscle_mass: typeof saved?.muscle_mass === 'number' ? saved.muscle_mass : (measurementData.muscle_mass ?? null)
       };
-      
-      // Appeler onSaved avec la nouvelle mesure pour l'ajouter à la liste locale
+
       onSaved(newMeasurement);
     } catch (e: any) {
       console.error('Measurement save failed');

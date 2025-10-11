@@ -338,6 +338,30 @@ export const dataService = {
     return data;
   },
 
+  // Get program_days (with workouts and exercises) for a specific program
+  async getProgramDays(programId: string) {
+    console.log('[dataService.getProgramDays] Loading program_days for program:', programId);
+    const { data, error } = await supabase
+      .from('program_days')
+      .select(`
+        *,
+        workouts(
+          *,
+          workout_exercises(*)
+        )
+      `)
+      .eq('program_id', programId)
+      .order('day_of_week', { ascending: true })
+
+    if (error) {
+      console.error('[dataService.getProgramDays] Error:', error);
+      throw error;
+    }
+
+    console.log('[dataService.getProgramDays] Loaded', (data || []).length, 'program_days');
+    return data;
+  },
+
   // Get today's workout for a client (for workout interface)
   async getTodayWorkout(clientId: string) {
     console.log('[dataService.getTodayWorkout] Loading today workout for client:', clientId);
