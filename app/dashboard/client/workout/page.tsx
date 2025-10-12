@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 interface Exercise {
   id: string;
@@ -195,15 +196,118 @@ export default function ActiveWorkout() {
 
   const finishWorkout = async () => {
     if (!workout || !workoutStartTime) return;
-
     const duration = Math.round((new Date().getTime() - workoutStartTime.getTime()) / 60000);
-    
-    // Ici vous pourriez sauvegarder l'entraînement dans Supabase
-    console.log('Entraînement terminé:', {
-      duration,
-      exercises: workout,
-      notes: workoutNotes
-    });
+
+    console.log('Entraînement terminé (saving):', { duration, exercises: workout, notes: workoutNotes });
+
+    try {
+      const exercisesPayload = workout.map((ex) => ({
+        workout_exercise_id: (ex as any).workout_exercise_id || null,
+        exercise_id: (ex as any).exercise_id || null,
+        exercise_name: ex.name,
+        order_in_workout: (ex as any).order_in_workout || (ex as any).order || null,
+        sets: ex.sets,
+        reps: ex.reps,
+        weight: ex.weight,
+        rest_time: parseInt(ex.rest || '0') || null,
+        notes: (ex as any).instructions || (ex as any).notes || null,
+        completedSets: ex.completedSets.map((s: any, idx: number) => ({
+          setNumber: idx + 1,
+          repsCompleted: s.reps || s.repsCompleted || 0,
+          weightUsed: s.weight || s.weightUsed || 0,
+          durationSeconds: s.durationSeconds || s.duration || null
+        }))
+      }));
+
+      // Try to get session id from programData (wrapper created at start)
+      let sessionId = programData?.session?.id || programData?.session_id || programData?.id || null;
+      // If no session exists, create one using the logged-in user id
+      if (!sessionId) {
+        try {
+          const supabase = createClientComponentClient();
+          const userRes = await supabase.auth.getUser();
+          const userId = userRes?.data?.user?.id || null;
+          if (!userId) {
+            console.warn('[ActiveWorkout] No authenticated user available to create session');
+          } else {
+            const createPayload: any = {
+              client_id: userId,
+              date: new Date().toISOString().slice(0,10),
+              status: 'in_progress',
+              program_id: programData?.program?.id || null,
+              program_name: programData?.program?.name || null
+            };
+            const resCreate = await fetch('/api/workout-sessions', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ action: 'create', payload: createPayload })
+            });
+            if (resCreate.ok) {
+              const jsonCreate = await resCreate.json();
+              sessionId = jsonCreate?.data?.id || jsonCreate?.data?.id || (jsonCreate?.data && jsonCreate.data.id) || null;
+              if (!sessionId) console.warn('[ActiveWorkout] Created session but no id returned', jsonCreate);
+            } else {
+              console.error('[ActiveWorkout] Failed creating session before complete', await resCreate.text());
+            }
+          }
+        } catch (e) {
+          console.error('[ActiveWorkout] Error creating session before complete:', e);
+        }
+      }
+      if (!sessionId) {
+        console.warn('[ActiveWorkout] No session id found after create attempt, skipping server persistence.');
+        router.push('/dashboard/client?tab=workouts');
+        return;
+      }
+
+      const body = {
+        action: 'complete_with_details',
+        payload: {
+          session_id: sessionId,
+          duration_minutes: duration,
+          notes: workoutNotes,
+          exercises: exercisesPayload
+        }
+      };
+
+      const res = await fetch('/api/workout-sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      // Verbose logging: status, headers, raw text and parsed JSON (if possible)
+      try {
+        const status = res.status;
+        const contentType = res.headers.get('content-type');
+        // read raw text from a clone so we don't consume original body if needed
+        let raw = null;
+        try {
+          raw = await res.clone().text();
+        } catch (e) {
+          raw = String(e);
+        }
+        console.log('[ActiveWorkout] save response status:', status, 'content-type:', contentType, 'raw:', raw);
+
+        let parsed: any = null;
+        try {
+          parsed = raw ? JSON.parse(raw) : null;
+        } catch (e) {
+          // Not JSON
+          parsed = null;
+        }
+
+        if (!res.ok) {
+          console.error('[ActiveWorkout] Failed saving session (parsed or raw):', parsed ?? raw);
+        } else {
+          console.log('[ActiveWorkout] Session saved (parsed or raw):', parsed ?? raw);
+        }
+      } catch (e) {
+        console.error('[ActiveWorkout] Error reading response:', e);
+      }
+    } catch (err) {
+      console.error('[ActiveWorkout] Error saving session:', err);
+    }
 
     router.push('/dashboard/client?tab=workouts');
   };

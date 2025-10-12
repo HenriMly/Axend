@@ -100,6 +100,7 @@ export default function ClientDashboard() {
   const [showProgramModal, setShowProgramModal] = useState(false);
   const [selectedDayObj, setSelectedDayObj] = useState<any | null>(null);
   const [selectedWorkoutObj, setSelectedWorkoutObj] = useState<any | null>(null);
+  const [isLoadingSessionDetails, setIsLoadingSessionDetails] = useState(false);
   const [isStartingProgram, setIsStartingProgram] = useState(false);
   
   // États pour la modal d'ajout de mesure
@@ -877,22 +878,18 @@ export default function ClientDashboard() {
           <div className="space-y-8">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
               <div>
-                <h2 className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent">
-                  Mes Séances
-                </h2>
+                <h2 className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent">Mes Séances</h2>
                 <p className="text-gray-600 dark:text-gray-400 mt-2">Suivez vos entraînements et performances</p>
               </div>
               <button className="group relative px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl font-semibold shadow-2xl shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:scale-105 transition-all duration-300 overflow-hidden">
                 <div className="absolute inset-0 bg-gradient-to-r from-emerald-700 to-teal-700 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 <span className="relative flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
                   Nouvelle séance
                 </span>
               </button>
             </div>
-            
+
             {workouts.length === 0 ? (
               <div className="relative bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl border border-white/20 dark:border-gray-700/30 p-12 text-center shadow-2xl">
                 <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 rounded-3xl"></div>
@@ -900,57 +897,135 @@ export default function ClientDashboard() {
                   title="Aucune séance enregistrée"
                   description="Commencez votre première séance d'entraînement dès maintenant !"
                   buttonText="Commencer une séance"
-                  onButtonClick={() => {
-                    // Logic to start a workout
-                    alert('Fonctionnalité à venir: Démarrer une séance');
-                  }}
+                  onButtonClick={() => alert('Fonctionnalité à venir: Démarrer une séance')}
                 />
               </div>
             ) : (
               <div className="space-y-6">
                 {workouts.map((workout) => (
-                  <div key={workout.id} className="group relative bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl p-8 border border-white/20 dark:border-gray-700/30 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all duration-500 hover:shadow-2xl hover:shadow-emerald-500/20 hover:-translate-y-2">
-                    <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 rounded-3xl"></div>
-                    <div className="relative">
-                      <div className="flex justify-between items-start mb-6">
-                        <div className="flex items-start gap-4">
-                          <div className="w-14 h-14 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 flex items-center justify-center shadow-2xl shadow-emerald-500/25 group-hover:scale-110 transition-transform duration-300">
-                            <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-                            </svg>
+                  <div
+                    key={workout.id}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { /* emulate click */ (e.target as HTMLElement).click(); } }}
+                    onClick={async () => {
+                      try {
+                        setIsLoadingSessionDetails(true);
+                        // optimistic UI
+                        setSelectedWorkoutObj(workout);
+                        setSelectedDayObj(null);
+                        window.scrollTo({ top: 0, behavior: 'smooth' });
+
+                        console.debug('[ClientDashboard] loading session details for workout.id=', workout.id, 'workout=', workout);
+
+                        // Try normalized tables first
+                        const fetched = await dataService.getSessionExercisesWithSets(workout.id);
+                        console.debug('[ClientDashboard] getSessionExercisesWithSets returned:', fetched);
+
+                        if (Array.isArray(fetched) && fetched.length > 0) {
+                          const mapped = fetched.map((se: any) => ({
+                            id: se.id,
+                            workout_exercise_id: se.workout_exercise_id,
+                            exercise_id: se.exercise_id,
+                            exercise_name: se.exercise_name,
+                            order_in_workout: se.order ?? se.order_in_workout,
+                            sets: se.sets,
+                            reps: se.reps,
+                            weight: se.weight,
+                            rest_time: se.rest_seconds ?? se.rest_time,
+                            notes: se.notes,
+                            completedSets: (se.workout_session_sets || []).map((s: any) => ({
+                              setNumber: s.set_number,
+                              repsCompleted: s.reps_completed,
+                              weightUsed: s.weight_used,
+                              durationSeconds: s.duration_seconds,
+                            })),
+                          }));
+
+                          setSelectedWorkoutObj((prev: any) => ({ ...prev, workout_exercises: mapped, exercises: mapped }));
+                          return;
+                        }
+
+                        // If no normalized session rows, try legacy workout_sets lookup as a best-effort fallback
+                        try {
+                          if (Array.isArray(workout.exercises) && workout.exercises.length > 0) {
+                            console.debug('[ClientDashboard] no normalized session_exercises found; attempting legacy lookup for workout.exercises');
+                            const legacyPromises = workout.exercises.map(async (we: any) => {
+                              const exerciseKey = we.workout_exercise_id || we.id || we.exercise_id;
+                              if (!exerciseKey) return { we, rows: [] };
+                              try {
+                                const rows = await dataService.getLegacyWorkoutSetsByExercise(exerciseKey);
+                                return { we, rows };
+                              } catch (legacyErr) {
+                                console.warn('[ClientDashboard] legacy lookup failed for', exerciseKey, legacyErr);
+                                return { we, rows: [] };
+                              }
+                            });
+
+                            const legacyResults = await Promise.all(legacyPromises);
+                            const mapped = legacyResults.map(({ we, rows }: any) => ({
+                              id: we.id || we.workout_exercise_id || `${workout.id}-ex-${Math.random().toString(36).slice(2,8)}`,
+                              workout_exercise_id: we.workout_exercise_id || we.id || null,
+                              exercise_id: we.exercise_id || null,
+                              exercise_name: we.exercise_name || we.name || we.exercise_name || 'Exercice',
+                              order_in_workout: we.order_in_workout ?? we.order ?? 0,
+                              sets: we.sets || we.planned_sets || 0,
+                              reps: we.reps || we.planned_reps || '',
+                              weight: we.weight || we.suggested_weight || null,
+                              rest_time: we.rest_time || we.rest || 60,
+                              notes: we.notes || null,
+                              completedSets: (rows || []).map((r: any, idx: number) => ({
+                                setNumber: r.set_number ?? idx + 1,
+                                repsCompleted: r.reps ?? r.reps_completed ?? null,
+                                weightUsed: r.weight ?? r.weight_used ?? null,
+                                durationSeconds: r.duration_seconds ?? r.duration ?? null,
+                              })),
+                            }));
+
+                            setSelectedWorkoutObj((prev: any) => ({ ...prev, workout_exercises: mapped, exercises: mapped }));
+                            return;
+                          }
+                        } catch (fallbackErr) {
+                          console.warn('[ClientDashboard] fallback legacy lookup error', fallbackErr);
+                        }
+
+                        // Nothing found — leave selected object as-is so UI shows planned info
+                        console.debug('[ClientDashboard] no session_exercises or legacy sets found for workout', workout.id);
+
+                      } catch (err) {
+                        console.error('[ClientDashboard] failed loading session details', err);
+                      } finally {
+                        setIsLoadingSessionDetails(false);
+                      }
+                    }}
+                    className="cursor-pointer group relative bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl p-8 border border-white/20 dark:border-gray-700/30 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all duration-500 hover:shadow-2xl hover:shadow-emerald-500/20 hover:-translate-y-2"
+                  >
+                    <div>
+                      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 rounded-3xl"></div>
+                      <div className="relative">
+                        <div className="flex justify-between items-start mb-6">
+                          <div className="flex items-start gap-4">
+                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 flex items-center justify-center shadow-2xl shadow-emerald-500/25 group-hover:scale-110 transition-transform duration-300">
+                              <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
+                            </div>
+                            <div>
+                              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+                                {((workout as any)?.title) || (workout as any)?.program_name || workout.programs?.name || (workout as any)?.program || 'Séance libre'}
+                              </h3>
+                              <p className="text-gray-600 dark:text-gray-400 font-medium">
+                                {new Date(workout.date).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1 group-hover:text-transparent group-hover:bg-gradient-to-r group-hover:from-emerald-600 group-hover:to-teal-600 group-hover:bg-clip-text transition-all duration-300">
-                                {(
-                                  (workout as any)?.title ||
-                                  (workout as any)?.program_name ||
-                                  workout.programs?.name ||
-                                  (workout as any)?.program ||
-                                  'Séance libre'
-                                )}
-                            </h3>
-                            <p className="text-gray-600 dark:text-gray-400 font-medium">
-                              {new Date(workout.date).toLocaleDateString('fr-FR', {
-                                weekday: 'long',
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric'
-                              })}
-                            </p>
+                          <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100/60 dark:bg-emerald-900/40 px-4 py-2 rounded-full backdrop-blur-sm">TERMINÉE</div>
+                        </div>
+
+                        {workout.notes && (
+                          <div className="bg-gray-50/50 dark:bg-gray-800/30 rounded-2xl p-4 mb-4 backdrop-blur-sm">
+                            <p className="text-gray-600 dark:text-gray-400 leading-relaxed">{workout.notes}</p>
                           </div>
-                        </div>
-                        <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100/60 dark:bg-emerald-900/40 px-4 py-2 rounded-full backdrop-blur-sm">
-                          TERMINÉE
-                        </div>
+                        )}
                       </div>
-                      
-                      {workout.notes && (
-                        <div className="bg-gray-50/50 dark:bg-gray-800/30 rounded-2xl p-4 mb-4 backdrop-blur-sm">
-                          <p className="text-gray-600 dark:text-gray-400 leading-relaxed">
-                            {workout.notes}
-                          </p>
-                        </div>
-                      )}
                     </div>
                   </div>
                 ))}
@@ -1435,22 +1510,83 @@ export default function ClientDashboard() {
                 {/* Selected workout details (when a day/workout was clicked) */}
                 {selectedWorkoutObj && (
                   <div className="mt-6 bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
-                    <div className="flex items-center justify-between mb-4">
-                      <h4 className="text-lg font-semibold text-gray-900 dark:text-white">🏋️‍♂️ Exercices - {selectedDayObj?.day_name || ''} - {selectedWorkoutObj?.name}</h4>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">{(selectedWorkoutObj.workout_exercises || selectedWorkoutObj.exercises || []).length} exercice(s)</div>
+                    {isLoadingSessionDetails && (
+                      <div className="mb-4 text-sm text-gray-500">Chargement des détails de la séance...</div>
+                    )}
+                    <div className="flex items-start justify-between mb-4 gap-4">
+                      <div>
+                        <h4 className="text-lg font-semibold text-gray-900 dark:text-white">🏋️‍♂️ {((selectedWorkoutObj as any)?.title) || selectedWorkoutObj?.program_name || selectedWorkoutObj?.programs?.name || 'Séance'}</h4>
+                        <div className="text-sm text-gray-600 dark:text-gray-400">{new Date(selectedWorkoutObj.date).toLocaleString()}</div>
+                        {selectedWorkoutObj.duration_minutes && <div className="text-sm text-gray-600 dark:text-gray-400">Durée: {selectedWorkoutObj.duration_minutes} min</div>}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-semibold text-gray-700 dark:text-gray-300">Status</div>
+                        <div className="mt-1 px-3 py-1 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 rounded-full inline-block">{(selectedWorkoutObj as any).status || 'Terminé'}</div>
+                      </div>
                     </div>
 
-                    <div className="space-y-3">
-                      {(selectedWorkoutObj.workout_exercises || selectedWorkoutObj.exercises || []).sort((a: any,b: any)=> (a.order_in_workout||0)-(b.order_in_workout||0)).map((we: any, i:number) => (
-                        <div key={we.id || i} className="p-3 rounded-lg border border-gray-200 dark:border-gray-700">
-                          <div className="flex justify-between items-center mb-1">
-                            <div className="font-medium text-gray-900 dark:text-white">{we.exercise_name || we.name}</div>
-                            <div className="text-sm text-gray-600 dark:text-gray-400">{we.sets} × {we.reps}</div>
+                    {selectedWorkoutObj.notes && (
+                      <div className="bg-gray-50/50 dark:bg-gray-800/30 rounded-2xl p-4 mb-4">
+                        <div className="text-sm text-gray-700 dark:text-gray-300">{selectedWorkoutObj.notes}</div>
+                      </div>
+                    )}
+
+                    <div className="space-y-4">
+                      {/* Exercises list: support both workout_exercises and exercises shapes */}
+                      {((selectedWorkoutObj.workout_exercises || selectedWorkoutObj.exercises) || []).sort((a: any,b: any)=> (a.order_in_workout||a.order||0)-(b.order_in_workout||b.order||0)).map((we: any, i:number) => {
+                        const plannedSets = we.sets || we.planned_sets || 0;
+                        const plannedReps = we.reps || we.planned_reps || '';
+                        const weightLabel = we.weight || we.suggested_weight || null;
+
+                        // Actuals: some rows may include completedSets, sets_completed or workout_sets
+                        const actualSets = we.completedSets || we.completed_sets || we.sets_completed || [];
+                        // If actualSets is a number (legacy), we can't display details, just show number
+                        const actualCount = Array.isArray(actualSets) ? actualSets.length : (typeof we.sets_completed === 'number' ? we.sets_completed : null);
+
+                        // Compute total volume if possible (sum reps*weight)
+                        let totalVolume = 0;
+                        if (Array.isArray(actualSets)) {
+                          actualSets.forEach((s: any) => {
+                            const reps = Number(s.repsCompleted ?? s.reps_completed ?? s.reps ?? 0) || 0;
+                            const w = Number(s.weightUsed ?? s.weight_used ?? s.weight ?? weightLabel ?? 0) || 0;
+                            totalVolume += reps * w;
+                          });
+                        }
+
+                        return (
+                          <div key={we.id || i} className="p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                            <div className="flex justify-between items-center mb-1">
+                              <div className="font-medium text-gray-900 dark:text-white">{we.exercise_name || we.name}</div>
+                              <div className="text-sm text-gray-600 dark:text-gray-400">Planned: {plannedSets} × {plannedReps}</div>
+                            </div>
+
+                            <div className="text-sm text-gray-600 dark:text-gray-400 mb-2">{weightLabel ? `Poids: ${weightLabel}` : 'Poids: Corps'} • Repos: {we.rest_time || we.rest || 60}s</div>
+
+                            {Array.isArray(actualSets) && actualSets.length > 0 ? (
+                              <div className="space-y-2">
+                                <div className="text-sm font-semibold">Séries effectuées</div>
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
+                                  {actualSets.map((s: any, idx: number) => (
+                                    <div key={idx} className="p-2 bg-gray-50 dark:bg-gray-800 rounded-md">
+                                      <div className="text-sm">Série {s.setNumber ?? s.set_number ?? idx+1}</div>
+                                      <div className="text-xs text-gray-500">Reps: {s.repsCompleted ?? s.reps_completed ?? s.reps ?? '-'}</div>
+                                      <div className="text-xs text-gray-500">Poids: {s.weightUsed ?? s.weight_used ?? s.weight ?? '-'}</div>
+                                      {s.durationSeconds ?? s.duration_seconds ? <div className="text-xs text-gray-500">Durée: {s.durationSeconds ?? s.duration_seconds}s</div> : null}
+                                    </div>
+                                  ))}
+                                </div>
+                                {totalVolume > 0 && <div className="text-sm font-medium mt-2">Volume total estimé: {totalVolume} kg</div>}
+                              </div>
+                            ) : actualCount !== null ? (
+                              <div className="text-sm text-gray-600">Séries effectuées: {actualCount}</div>
+                            ) : (
+                              <div className="text-sm text-gray-500">Aucune donnée d'exécution enregistrée pour cet exercice.</div>
+                            )}
+
+                            {we.notes && <div className="mt-2 text-sm text-gray-700 dark:text-gray-300">Note: {we.notes}</div>}
                           </div>
-                          <div className="text-sm text-gray-600 dark:text-gray-400">{we.weight ? `Poids: ${we.weight}` : 'Poids: Corps'} • Repos: {we.rest_time || we.rest || 60}s</div>
-                          {we.notes && <div className="mt-2 text-sm text-gray-700 dark:text-gray-300">{we.notes}</div>}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}

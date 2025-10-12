@@ -500,6 +500,31 @@ export const dataService = {
     return data
   },
 
+  // Get session exercises and their sets for a workout session
+  async getSessionExercisesWithSets(workoutSessionId: string) {
+    // Select session exercises and include their sets
+    const { data, error } = await supabase
+      .from('workout_session_exercises')
+      .select('*, workout_session_sets(*)')
+      .eq('workout_session_id', workoutSessionId)
+      .order('"order"', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  },
+
+  // Legacy: get workout_sets rows by workout_exercise_id (optional)
+  async getLegacyWorkoutSetsByExercise(workoutExerciseId: string) {
+    const { data, error } = await supabase
+      .from('workout_sets')
+      .select('*')
+      .eq('workout_exercise_id', workoutExerciseId)
+      .order('created_at', { ascending: true });
+
+    if (error) throw error;
+    return data;
+  },
+
   // Get goals for a client
   async getClientGoals(clientId: string) {
     const { data, error } = await supabase
