@@ -98,6 +98,9 @@ export default function ClientDashboard() {
   // États pour la modal de programme
   const [selectedProgram, setSelectedProgram] = useState<Program | null>(null);
   const [showProgramModal, setShowProgramModal] = useState(false);
+  const [selectedDayObj, setSelectedDayObj] = useState<any | null>(null);
+  const [selectedWorkoutObj, setSelectedWorkoutObj] = useState<any | null>(null);
+  const [isStartingProgram, setIsStartingProgram] = useState(false);
   
   // États pour la modal d'ajout de mesure
   const [showAddMeasurementModal, setShowAddMeasurementModal] = useState(false);
@@ -183,6 +186,142 @@ export default function ClientDashboard() {
   const closeProgramModal = () => {
     setShowProgramModal(false);
     setSelectedProgram(null);
+    setSelectedDayObj(null);
+    setSelectedWorkoutObj(null);
+  };
+
+  // Start the selected program: extracted from inline handler to avoid large inline JSX function
+  const startSelectedProgram = async () => {
+    if (!selectedProgram || !userProfile?.id) {
+      alert('Impossible de démarrer le programme: données manquantes');
+      return;
+    }
+
+    try {
+      setIsStartingProgram(true);
+
+      // Build a programPayload compatible with the workout runner
+      // If the user explicitly clicked a day/workout, prefer that exact workout and build a trimmed programPayload
+      let programPayload: any = { id: selectedProgram.id, name: selectedProgram.name };
+
+      // Determine workout exercises: prefer explicit selection, otherwise fallback to program structure
+      let workoutExercises: any[] = [];
+      let program_day_id: string | undefined = undefined;
+      let template_workout_id: string | undefined = undefined;
+
+      if (selectedWorkoutObj && selectedDayObj) {
+        // Use the selected day/workout directly
+        const chosenDay = selectedDayObj;
+        const chosenWorkout = selectedWorkoutObj;
+        program_day_id = chosenDay.id;
+        template_workout_id = chosenWorkout.id;
+
+        const exList = chosenWorkout.workout_exercises || chosenWorkout.exercises || [];
+        workoutExercises = (exList || []).map((ex: any, idx: number) => ({
+          id: ex.id || `${template_workout_id || 'tmp'}-ex-${idx}`,
+          exercise_id: ex.exercise_id || ex.id || `ex-${idx}`,
+          exercise_name: ex.exercise_name || ex.name || ex.exercise_name || 'Exercice',
+          exercise_category: ex.exercise_category || null,
+          exercise_equipment: ex.exercise_equipment || null,
+          order_in_workout: ex.order_in_workout || (idx + 1),
+          sets: typeof ex.sets !== 'undefined' ? ex.sets : (ex.sets || 3),
+          reps: ex.reps || '12',
+          weight: ex.weight || null,
+          rest_time: ex.rest_time || ex.rest || 60,
+          notes: ex.notes || ex.instructions || null
+        }));
+
+  programPayload.program_days = [{ ...chosenDay, workouts: [{ ...chosenWorkout, workout_exercises: workoutExercises }] }];
+      } else {
+        // fallback: try to derive from selectedProgram.program_days or legacy exercises
+        programPayload = { ...programPayload, ...selectedProgram };
+        const pdays = (selectedProgram as any).program_days;
+        const chosenDay = pdays && pdays.length ? (pdays.find((d: any) => !d.is_rest_day) || pdays[0]) : null;
+        const chosenWorkout = chosenDay && chosenDay.workouts && chosenDay.workouts.length ? chosenDay.workouts[0] : null;
+        if (chosenDay) program_day_id = chosenDay.id;
+        if (chosenWorkout) {
+          template_workout_id = chosenWorkout.id;
+          const exList = chosenWorkout.workout_exercises || chosenWorkout.exercises || [];
+          workoutExercises = (exList || []).map((ex: any, idx: number) => ({
+            id: ex.id || `${template_workout_id || 'tmp'}-ex-${idx}`,
+            exercise_id: ex.exercise_id || ex.id || `ex-${idx}`,
+            exercise_name: ex.exercise_name || ex.name || ex.exercise_name || 'Exercice',
+            exercise_category: ex.exercise_category || null,
+            exercise_equipment: ex.exercise_equipment || null,
+            order_in_workout: ex.order_in_workout || (idx + 1),
+            sets: typeof ex.sets !== 'undefined' ? ex.sets : (ex.sets || 3),
+            reps: ex.reps || '12',
+            weight: ex.weight || null,
+            rest_time: ex.rest_time || ex.rest || 60,
+            notes: ex.notes || ex.instructions || null
+          }));
+
+          programPayload.program_days = [{ ...chosenDay, workouts: [{ ...chosenWorkout, workout_exercises: workoutExercises }] }];
+        } else if (selectedProgram.exercises && selectedProgram.exercises.length > 0) {
+          // fallback: flat exercises list
+          workoutExercises = (selectedProgram.exercises || []).map((ex: any, idx: number) => ({
+            id: ex.id || `ex-${idx}`,
+            exercise_id: ex.id || `ex-${idx}`,
+            exercise_name: ex.name || ex.exercise_name || 'Exercice',
+            exercise_category: null,
+            exercise_equipment: null,
+            order_in_workout: idx + 1,
+            sets: ex.sets || 3,
+            reps: ex.reps || '12',
+            weight: ex.weight || null,
+            rest_time: ex.rest_time || ex.rest || 60,
+            notes: ex.notes || ex.instructions || null
+          }));
+
+          // synthesize a program_day + workout so runner can consume
+          const syntheticWorkout = { id: `synthetic-${selectedProgram.id}`, name: selectedProgram.name, workout_exercises: workoutExercises };
+          programPayload.program_days = [{ id: `pd-${selectedProgram.id}`, day_of_week: 1, day_name: 'Séance', is_rest_day: false, workouts: [syntheticWorkout] }];
+          template_workout_id = syntheticWorkout.id;
+        }
+      }
+
+      // Build session payload
+      const sessionPayload: any = {
+        client_id: userProfile.id,
+        program_id: selectedProgram.id,
+        program_name: selectedProgram.name,
+        date: new Date().toISOString(),
+        status: 'in_progress',
+        exercises_count: workoutExercises.length
+      };
+      if (program_day_id) sessionPayload.program_day_id = program_day_id;
+      if (template_workout_id) sessionPayload.template_workout_id = template_workout_id;
+
+      // Create session server-side
+      const res = await fetch('/api/workout-sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', payload: sessionPayload })
+      });
+
+      let createdSession: any = null;
+      try {
+        const body = await res.json();
+        createdSession = body?.data || null;
+      } catch (e) {
+        console.warn('Could not parse /api/workout-sessions response', e);
+      }
+
+      // Prepare runner data (session + program). Include workout_exercises so runner can start immediately
+      const runnerData = {
+        session: createdSession,
+        program: programPayload
+      };
+
+      const encoded = encodeURIComponent(JSON.stringify(runnerData));
+      setShowProgramModal(false);
+      router.push(`/dashboard/client/workout?data=${encoded}`);
+    } catch (err) {
+      console.error('Failed to start program', err);
+      alert('Erreur lors du démarrage du programme. Vérifiez la console.');
+    } finally {
+      setIsStartingProgram(false);
+    }
   };
 
   const handleAddMeasurement = () => {
@@ -782,7 +921,13 @@ export default function ClientDashboard() {
                           </div>
                           <div>
                             <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1 group-hover:text-transparent group-hover:bg-gradient-to-r group-hover:from-emerald-600 group-hover:to-teal-600 group-hover:bg-clip-text transition-all duration-300">
-                              {workout.programs?.name || 'Séance libre'}
+                                {(
+                                  (workout as any)?.title ||
+                                  (workout as any)?.program_name ||
+                                  workout.programs?.name ||
+                                  (workout as any)?.program ||
+                                  'Séance libre'
+                                )}
                             </h3>
                             <p className="text-gray-600 dark:text-gray-400 font-medium">
                               {new Date(workout.date).toLocaleDateString('fr-FR', {
@@ -1190,7 +1335,7 @@ export default function ClientDashboard() {
                               ) : workouts.length > 0 ? (
                                 <div className="space-y-2">
                                   {workouts.map((workout: any, workoutIndex: number) => (
-                                    <div key={workoutIndex} className="bg-white/60 dark:bg-gray-700/60 rounded-xl p-3 backdrop-blur-sm">
+                                              <div key={workoutIndex} onClick={() => { setSelectedDayObj(dayObj); setSelectedWorkoutObj(workout); }} className="cursor-pointer bg-white/60 dark:bg-gray-700/60 rounded-xl p-3 backdrop-blur-sm hover:shadow-md transition-shadow">
                                       <div className="font-semibold text-purple-600 dark:text-purple-400 text-sm mb-1">
                                         {workout.name}
                                       </div>
@@ -1287,6 +1432,29 @@ export default function ClientDashboard() {
                   )}
                 </div>
 
+                {/* Selected workout details (when a day/workout was clicked) */}
+                {selectedWorkoutObj && (
+                  <div className="mt-6 bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <h4 className="text-lg font-semibold text-gray-900 dark:text-white">🏋️‍♂️ Exercices - {selectedDayObj?.day_name || ''} - {selectedWorkoutObj?.name}</h4>
+                      <div className="text-sm text-gray-600 dark:text-gray-400">{(selectedWorkoutObj.workout_exercises || selectedWorkoutObj.exercises || []).length} exercice(s)</div>
+                    </div>
+
+                    <div className="space-y-3">
+                      {(selectedWorkoutObj.workout_exercises || selectedWorkoutObj.exercises || []).sort((a: any,b: any)=> (a.order_in_workout||0)-(b.order_in_workout||0)).map((we: any, i:number) => (
+                        <div key={we.id || i} className="p-3 rounded-lg border border-gray-200 dark:border-gray-700">
+                          <div className="flex justify-between items-center mb-1">
+                            <div className="font-medium text-gray-900 dark:text-white">{we.exercise_name || we.name}</div>
+                            <div className="text-sm text-gray-600 dark:text-gray-400">{we.sets} × {we.reps}</div>
+                          </div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400">{we.weight ? `Poids: ${we.weight}` : 'Poids: Corps'} • Repos: {we.rest_time || we.rest || 60}s</div>
+                          {we.notes && <div className="mt-2 text-sm text-gray-700 dark:text-gray-300">{we.notes}</div>}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Actions */}
                 <div className="flex gap-4">
                   <button
@@ -1296,13 +1464,11 @@ export default function ClientDashboard() {
                     Fermer
                   </button>
                   <button
-                    onClick={() => {
-                      // Ici on pourrait ajouter une fonction pour démarrer le programme
-                      alert('Fonctionnalité à venir : Démarrer le programme');
-                    }}
+                    onClick={startSelectedProgram}
                     className="flex-1 px-6 py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-2xl font-semibold shadow-2xl shadow-purple-500/25 hover:shadow-purple-500/40 hover:scale-105 transition-all duration-300"
+                    disabled={isStartingProgram}
                   >
-                    Commencer le programme
+                    {isStartingProgram ? 'Démarrage...' : 'Commencer le programme'}
                   </button>
                 </div>
               </div>

@@ -43,29 +43,42 @@ export default function ActiveWorkout() {
     if (data) {
       try {
         const parsedData = JSON.parse(decodeURIComponent(data));
-        console.log('[ActiveWorkout] Program data loaded:', parsedData);
-        setProgramData(parsedData);
-        
-        // Convertir les exercices du programme en format WorkoutExercise
-        const programWorkout = parsedData.program_days[0]?.workouts[0];
+  console.log('[ActiveWorkout] Program data loaded:', parsedData);
+  setProgramData(parsedData);
+
+  // Support two shapes:
+  // - legacy: parsedData is the program object (program_days...)
+  // - new wrapper: parsedData = { session, program }
+  const programObj = parsedData.program || parsedData;
+
+  // Convertir les exercices du programme en format WorkoutExercise
+  const programWorkout = programObj.program_days?.[0]?.workouts?.[0];
         if (programWorkout && programWorkout.workout_exercises) {
-          const workoutExercises: WorkoutExercise[] = programWorkout.workout_exercises
-            .sort((a: any, b: any) => a.order_in_workout - b.order_in_workout)
-            .map((ex: any) => ({
-              id: ex.exercise_id,
-              name: ex.exercise_name,
-              sets: ex.sets,
-              reps: ex.reps,
-              weight: ex.weight || '',
-              rest: `${ex.rest_time || 60}`,
-              instructions: ex.notes || '',
-              completedSets: Array(ex.sets).fill(null).map(() => ({
-                reps: 0,
-                weight: 0,
-                completed: false,
-                restCompleted: false
-              }))
-            }));
+          const workoutExercises: WorkoutExercise[] = (programWorkout.workout_exercises || [])
+            .slice()
+            .sort((a: any, b: any) => (a.order_in_workout || 0) - (b.order_in_workout || 0))
+            .map((ex: any) => {
+              const sets = typeof ex.sets === 'number' ? ex.sets : (ex.sets ? Number(ex.sets) : 3);
+              const reps = typeof ex.reps === 'string' ? ex.reps : (ex.reps != null ? String(ex.reps) : '12');
+              const weight = ex.weight != null ? String(ex.weight) : '';
+              const restSeconds = typeof ex.rest_time === 'number' ? ex.rest_time : (ex.rest_time ? Number(ex.rest_time) : (ex.rest ? Number(ex.rest) : 60));
+
+              return {
+                id: ex.exercise_id || ex.id || `${ex.exercise_name || 'ex'}-${Math.random().toString(36).slice(2,8)}`,
+                name: ex.exercise_name || ex.name || 'Exercice',
+                sets: sets,
+                reps: reps,
+                weight: weight,
+                rest: `${restSeconds}`,
+                instructions: ex.notes || ex.instructions || '',
+                completedSets: Array(Math.max(1, sets)).fill(null).map(() => ({
+                  reps: 0,
+                  weight: 0,
+                  completed: false,
+                  restCompleted: false
+                }))
+              } as WorkoutExercise;
+            });
           
           console.log('[ActiveWorkout] Workout exercises prepared:', workoutExercises);
           setWorkout(workoutExercises);

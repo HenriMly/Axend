@@ -2504,6 +2504,10 @@ function ProgramForm({ initial, clientId, coachId, onCancel, onSaved }: ProgramF
 
   const [selectedDayIndex, setSelectedDayIndex] = useState<number | null>(null);
   const [selectedWorkoutIndex, setSelectedWorkoutIndex] = useState<number | null>(null);
+  // Search state for external exercises (must be declared unconditionally to obey Hooks rules)
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   const handleSave = async () => {
     if (step === 1) {
@@ -2901,6 +2905,94 @@ function ProgramForm({ initial, clientId, coachId, onCancel, onSaved }: ProgramF
   const currentDay = selectedDayIndex !== null ? programDays[selectedDayIndex] : null;
   const currentWorkout = currentDay && selectedWorkoutIndex !== null ? currentDay.workouts[selectedWorkoutIndex] : null;
 
+  // Exercises management UI (search state declared earlier to satisfy Hooks rules)
+
+  const runSearch = async (q: string) => {
+    setIsSearching(true);
+    try {
+      const res = await fetch('/api/external-exercises', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ muscle: q }) });
+      const j = await res.json();
+      if (!res.ok) {
+        console.error('Search external exercises failed', j);
+        setSearchResults([]);
+      } else {
+        setSearchResults(j.data || []);
+      }
+    } catch (e) {
+      console.error('Search error', e);
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const addExternalExerciseToWorkout = async (exercise: any) => {
+    if (selectedDayIndex == null || selectedWorkoutIndex == null) return;
+    // Choose best available image URL (common fields from different APIs)
+    const imageUrl = exercise.image || exercise.image_url || exercise.gifUrl || exercise.gif || exercise.thumbnail || exercise.gif_url || null;
+
+    // Add to UI state (include image_url)
+    addExerciseToWorkout(selectedDayIndex, selectedWorkoutIndex, {
+      id: exercise.id || `ext-${Date.now()}`,
+      name: exercise.name || exercise.exercise || exercise.title,
+      category: exercise.muscle || exercise.category || '',
+      equipment: exercise.equipment || '',
+      image_url: imageUrl
+    });
+
+    // If editing an existing program with an ID, persist via /api/exercises
+    if (initial && initial.id) {
+      try {
+        const payload: any = {
+          program_id: initial.id,
+          coach_id: coachId,
+          name: exercise.name || exercise.exercise || exercise.title,
+          description: exercise.instructions || '',
+          image_url: imageUrl || null,
+          // if we have a selected workout, include the workout_id so server can create the join row
+          workout_id: currentWorkout?.id || null,
+          exercise_external_id: exercise.id || null
+        };
+
+        // Log payload for debugging
+        console.debug('[addExternalExerciseToWorkout] Persist payload:', payload);
+        const res = await fetch('/api/exercises', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', payload }) });
+        const text = await res.text();
+        let jsonBody: any = null;
+        try { jsonBody = text ? JSON.parse(text) : null; } catch (e) { /* not json */ }
+
+        // Collect some useful response diagnostics
+        const contentType = res.headers.get('content-type');
+        const diagnostics = {
+          status: res.status,
+          statusText: res.statusText,
+          contentType,
+          rawText: text,
+          parsedBody: jsonBody
+        };
+
+        if (!res.ok) {
+          // Prefer explicit error string when available
+          if (diagnostics.parsedBody && diagnostics.parsedBody.error) {
+            console.error('[Persist exercise failed] parsed error:', diagnostics.parsedBody.error);
+            alert('Erreur persistance exercice: ' + diagnostics.parsedBody.error);
+          } else if (diagnostics.rawText) {
+            console.error('[Persist exercise failed] raw response:', diagnostics.rawText);
+            alert('Erreur persistance exercice: ' + diagnostics.rawText);
+          } else {
+            // Fallback: stringify the diagnostics object to avoid collapsed empty object display
+            console.error('[Persist exercise failed] diagnostics:', JSON.stringify(diagnostics, null, 2));
+            alert('Erreur persistance exercice: statut ' + diagnostics.status + ' ' + diagnostics.statusText);
+          }
+        } else {
+          console.debug('Persist exercise succeeded', diagnostics);
+        }
+      } catch (e) {
+        console.error('Persist external exercise error', e);
+      }
+    }
+  };
+
   if (step === 3 && currentDay && currentWorkout) {
     return (
       <div className="space-y-6 max-h-[70vh] overflow-y-auto">
@@ -2908,21 +3000,73 @@ function ProgramForm({ initial, clientId, coachId, onCancel, onSaved }: ProgramF
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             🏋️‍♂️ Exercices - {currentDay.day_name} - {currentWorkout.name}
           </h3>
-          <button 
-            onClick={() => setStep(2)}
-            className="text-blue-600 hover:text-blue-700 text-sm"
-          >
-            ← Retour à la planification
-          </button>
+          <div className="flex items-center space-x-3">
+            <button 
+              onClick={() => setStep(2)}
+              className="text-blue-600 hover:text-blue-700 text-sm"
+            >
+              ← Retour à la planification
+            </button>
+            <button onClick={() => { setSearchQuery(''); setSearchResults([]); }} className="text-sm text-gray-500">Réinitialiser</button>
+          </div>
         </div>
-        
-        <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">
-          <p className="text-blue-800 dark:text-blue-300 text-sm">
-            💡 <strong>Astuce :</strong> Pour l'instant, configurez le programme de base. 
-            La gestion détaillée des exercices sera disponible dans la prochaine version !
-          </p>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm text-gray-700 dark:text-gray-300 mb-2">Rechercher par muscle</label>
+            <div className="flex gap-2">
+              <input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Ex: biceps, chest, legs" className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700" />
+              <button onClick={() => runSearch(searchQuery)} className="px-3 py-2 bg-blue-600 text-white rounded">{isSearching ? 'Recherche...' : 'Rechercher'}</button>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {searchResults.length === 0 ? (
+                <div className="text-sm text-gray-500">Aucun résultat. Essayez un autre muscle.</div>
+              ) : (
+                searchResults.map((ex, i) => (
+                  <div key={i} className="p-3 bg-white dark:bg-gray-800 rounded border flex items-start justify-between">
+                    <div>
+                      <div className="font-semibold">{ex.name || ex.exercise || ex.title}</div>
+                      <div className="text-xs text-gray-500">Muscle: {ex.muscle || ex.muscles || '—'}</div>
+                      <div className="text-xs text-gray-500 mt-1">Equipement: {ex.equipment || '—'}</div>
+                    </div>
+                    <div className="flex flex-col items-end">
+                      <button onClick={() => addExternalExerciseToWorkout(ex)} className="px-3 py-1 bg-green-600 text-white rounded">Ajouter</button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div>
+            <h4 className="text-sm font-semibold mb-2">Exercices dans la séance</h4>
+            {currentWorkout.exercises.length === 0 ? (
+              <div className="text-sm text-gray-500">Aucun exercice ajouté</div>
+            ) : (
+              <div className="space-y-2">
+                {currentWorkout.exercises.map((ex: any, idx: number) => (
+                  <div key={idx} className="p-3 bg-white dark:bg-gray-800 rounded border flex items-center justify-between">
+                    <div>
+                      <div className="font-semibold">{ex.exercise_name || ex.name}</div>
+                      <div className="text-xs text-gray-500">{ex.exercise_category || ex.category || ''}</div>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <button onClick={() => {
+                        // remove from programDays
+                        setProgramDays(prev => prev.map((d, di) => di === selectedDayIndex ? {
+                          ...d,
+                          workouts: d.workouts.map((w, wi) => wi === selectedWorkoutIndex ? { ...w, exercises: w.exercises.filter((_, i2) => i2 !== idx) } : w)
+                        } : d));
+                      }} className="text-red-600">Supprimer</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
-        
+
         <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-600">
           <button 
             onClick={onCancel} 
@@ -2931,11 +3075,10 @@ function ProgramForm({ initial, clientId, coachId, onCancel, onSaved }: ProgramF
             Annuler
           </button>
           <button 
-            onClick={handleSave} 
-            disabled={isSaving}
-            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            onClick={() => { setStep(2); }}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
-            {isSaving ? 'Création...' : 'Créer le programme'}
+            Terminer
           </button>
         </div>
       </div>
