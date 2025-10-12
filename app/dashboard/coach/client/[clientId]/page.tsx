@@ -68,7 +68,7 @@ interface ProgramDetail {
 }
 
 export default function ClientDetail({ params }: { params: Promise<{ clientId: string }> }) {
-  const { user, userProfile } = useRequireCoach();
+  const { user, userProfile, loading } = useRequireCoach();
   const [client, setClient] = useState<Client | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [isLoading, setIsLoading] = useState(true);
@@ -112,6 +112,81 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
   const [programDetails, setProgramDetails] = useState<ProgramDetail[]>([]);
   const [clientGoals, setClientGoals] = useState<any[]>([]);
   const [selectedProgramIndex, setSelectedProgramIndex] = useState<number>(0);
+
+  // Open the program editor for a given program name.
+  // Re-uses the same loading/fallback logic as the Programs tab so both buttons behave the same.
+  const openEditProgram = async (programName: string) => {
+    console.log('openEditProgram()', programName, 'clientId=', client?.id);
+    if (!client?.id) {
+      console.error('No client ID available');
+      return;
+    }
+
+    try {
+      let programsAdvanced: any[] | null = null;
+      try {
+        programsAdvanced = await dataService.getClientProgramsAdvanced(client.id);
+        console.log('Programs (advanced) loaded:', programsAdvanced && programsAdvanced.length);
+      } catch (advErr) {
+        console.debug('getClientProgramsAdvanced failed or not available:', advErr);
+        programsAdvanced = null;
+      }
+
+      let fullProgram: any = null;
+      if (programsAdvanced && programsAdvanced.length) {
+        fullProgram = programsAdvanced.find((p: any) => p.name === programName || p.id === programName) || null;
+      }
+
+      if (!fullProgram) {
+        // fallback to simple programs
+        console.log('Falling back to simple programs fetch...');
+        const programs = await dataService.getClientPrograms(client.id);
+        console.log('Programs (simple) loaded:', programs);
+        fullProgram = programs.find((p: any) => p.name === programName || p.id === programName) || null;
+      }
+
+      if (fullProgram) {
+        // ensure program_days normalized
+        if (!fullProgram.program_days || fullProgram.program_days.length === 0) {
+          if (fullProgram.id) {
+            try {
+              const days = await dataService.getProgramDays(fullProgram.id);
+              if (days && days.length) {
+                fullProgram.program_days = days;
+                console.log('Loaded program_days via getProgramDays:', days.length);
+              } else {
+                fullProgram.program_days = fullProgram.days || fullProgram.programDays || [];
+              }
+            } catch (daysErr) {
+              console.debug('getProgramDays failed:', daysErr);
+              fullProgram.program_days = fullProgram.days || fullProgram.programDays || [];
+            }
+          } else {
+            fullProgram.program_days = fullProgram.days || fullProgram.programDays || [];
+          }
+        }
+        setEditingProgram(fullProgram);
+      } else {
+        console.warn('Program not found in database, using minimal fallback');
+        const programToEdit = {
+          name: programName,
+          client_id: client.id,
+          coach_id: userProfile?.id,
+          program_days: []
+        };
+        setEditingProgram(programToEdit);
+      }
+    } catch (error) {
+      console.error('Error loading program details:', error);
+      const programToEdit = {
+        name: programName,
+        client_id: client!.id,
+        coach_id: userProfile?.id,
+        program_days: []
+      };
+      setEditingProgram(programToEdit);
+    }
+  };
   // Week selector (start at Monday of current week)
   const [selectedWeekStart, setSelectedWeekStart] = useState<Date>(() => {
     const d = new Date();
@@ -207,8 +282,22 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
       }
     };
 
-    // Ensure the current user is coach
-    if (!userProfile || userProfile.role !== 'coach') {
+    // Ensure the current user is a coach.
+    // Wait for the auth provider to finish loading (this covers cases where a user exists but the profile
+    // hasn't been loaded yet). Only redirect after loading is finished.
+    if (loading) {
+      // Still resolving session/profile -> do not redirect yet
+      return;
+    }
+
+    // After loading is complete, if there's no user, send to coach login
+    if (!user) {
+      router.push('/auth/coach/login');
+      return;
+    }
+
+    // If a profile exists but it's not a coach, redirect to client dashboard
+    if (userProfile && userProfile.role !== 'coach') {
       router.push('/dashboard/client');
       return;
     }
@@ -547,8 +636,8 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
       {/* Navigation tabs moderne */}
       <div className="max-w-7xl mx-auto px-6">
         <div className="relative bg-white/40 dark:bg-gray-800/40 backdrop-blur-xl rounded-2xl p-2 border border-white/20 dark:border-gray-700/30">
-          <nav className="flex overflow-x-auto scrollbar-hide">
-            <div className="flex space-x-1 min-w-max">
+          <nav className="flex flex-wrap justify-center">
+            <div className="flex flex-wrap gap-2 justify-center w-full">
               {[
                 { id: 'overview', name: 'Vue d\'ensemble', icon: '📊', gradient: 'from-blue-500 to-cyan-500' },
                 { id: 'workouts', name: 'Entraînements', icon: '💪', gradient: 'from-purple-500 to-pink-500' },
@@ -644,7 +733,18 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                             <button onClick={() => {
                               const idx = workoutSessions.findIndex(s => s.id && workout.id && String(s.id) === String(workout.id));
                               setEditingIndex(idx >= 0 ? idx : null);
-                              setEditingWorkout(workout);
+                              const wAny: any = workout;
+                              const normalized = {
+                                id: wAny.id,
+                                date: wAny.date,
+                                program: wAny.program || wAny.program_name || wAny.name || '',
+                                title: wAny.title && String(wAny.title).trim() ? String(wAny.title).trim() : (wAny.program || wAny.program_name || wAny.name || ''),
+                                duration: wAny.duration || wAny.duration_minutes || 0,
+                                exercises: Array.isArray(wAny.exercises) ? wAny.exercises.length : (wAny.exercises ?? wAny.exercises_count ?? 0),
+                                notes: wAny.notes || '',
+                                status: wAny.status || 'completed'
+                              };
+                              setEditingWorkout(normalized);
                             }} className="px-3 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-semibold rounded-lg hover:scale-105 transition-all duration-200">
                               ✏️ Éditer
                             </button>
@@ -722,7 +822,7 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                           </div>
                         </div>
                       </div>
-                      <button className="px-4 py-2 bg-gradient-to-r from-purple-500/10 to-pink-500/10 hover:from-purple-500/20 hover:to-pink-500/20 text-purple-600 dark:text-purple-400 font-semibold rounded-xl border border-purple-200/50 dark:border-purple-600/30 hover:scale-105 transition-all duration-200">
+                      <button onClick={() => openEditProgram(program)} className="px-4 py-2 bg-gradient-to-r from-purple-500/10 to-pink-500/10 hover:from-purple-500/20 hover:to-pink-500/20 text-purple-600 dark:text-purple-400 font-semibold rounded-xl border border-purple-200/50 dark:border-purple-600/30 hover:scale-105 transition-all duration-200">
                         ⚙️ Modifier
                       </button>
                     </div>
@@ -815,12 +915,14 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                                           // Open edit modal prefilled with this scheduled session
                                           const dateIso = date.toISOString().split('T')[0];
                                           const wAny: any = w;
+                                          const wObj: any = wAny;
                                           setEditingWorkout({
                                             id: null,
                                             date: dateIso,
-                                            program: wAny.name,
-                                            duration: wAny.estimated_duration || 60,
-                                            exercises: (wAny.workout_exercises && wAny.workout_exercises.length) || wAny.exercises_count || 0,
+                                            program: wObj.name || wObj.program || wObj.program_name || '',
+                                            title: wObj.title && String(wObj.title).trim() ? String(wObj.title).trim() : (wObj.name || wObj.program || wObj.program_name || ''),
+                                            duration: wObj.estimated_duration || wObj.duration || 60,
+                                            exercises: (wObj.workout_exercises && wObj.workout_exercises.length) || wObj.exercises_count || wObj.exercises || 0,
                                             status: 'completed',
                                             notes: ''
                                           });
@@ -864,7 +966,7 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                   <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">Séances réalisées par le client</p>
                 </div>
                 <button 
-                  onClick={() => setAddingWorkout(true)}
+                  onClick={(e) => { e.stopPropagation(); console.log('[ClientDetail] + Ajouter séance clicked'); setAddingWorkout(true); }}
                   className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium rounded-lg transition-colors"
                 >
                   + Ajouter séance
@@ -876,10 +978,71 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                     clientId={clientId}
                     programs={client.programs}
                     onCancel={() => setAddingWorkout(false)}
-                    onSaved={(workout) => {
-                      setWorkoutSessions([...workoutSessions, workout]);
-                      setAddingWorkout(false);
-                    }}
+                    onSaved={async (workout) => {
+                        // try to persist to server
+                        try {
+                          const payload: any = {
+                            client_id: client!.id,
+                            date: workout.date,
+                            duration_minutes: workout.duration || 0,
+                            program_name: workout.title && workout.title.trim() ? workout.title.trim() : (workout.program || ''),
+                            exercises_count: workout.exercises || 0,
+                            status: workout.status || 'completed',
+                            notes: workout.notes || ''
+                          };
+
+                          const apiRes = await fetch('/api/workout-sessions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'create', payload })
+                          });
+                          const json = await apiRes.json();
+                          if (apiRes.ok && json.data) {
+                            const created = json.data;
+                            const newSession = {
+                              id: created.id,
+                              date: created.date,
+                              program: created.program_name || created.program || payload.program_name,
+                              duration: created.duration_minutes || payload.duration_minutes || 0,
+                              exercises: created.exercises_count || payload.exercises_count || 0,
+                              notes: created.notes || payload.notes || '',
+                              status: created.status || payload.status || 'completed'
+                            };
+                            setWorkoutSessions(prev => [newSession, ...prev]);
+                          } else {
+                            // fallback to local add
+                            console.error('API create workout failed', json);
+                            const fallback = {
+                              id: `local-${Date.now()}`,
+                              date: workout.date,
+                              program: workout.program,
+                              title: workout.title,
+                              duration: workout.duration || 0,
+                              exercises: workout.exercises || 0,
+                              notes: workout.notes || '',
+                              status: workout.status || 'completed'
+                            };
+                            setWorkoutSessions(prev => [fallback, ...prev]);
+                            alert('Séance ajoutée localement, mais la sauvegarde sur le serveur a échoué.');
+                          }
+                        } catch (e) {
+                          console.error('Failed to create workout via API', e);
+                          const fallback = {
+                            id: `local-${Date.now()}`,
+                            date: workout.date,
+                            program: workout.program,
+                            title: workout.title,
+                            duration: workout.duration || 0,
+                            exercises: workout.exercises || 0,
+                            notes: workout.notes || '',
+                            status: workout.status || 'completed'
+                          };
+                          setWorkoutSessions(prev => [fallback, ...prev]);
+                          alert('Séance ajoutée localement (API indisponible).');
+                        } finally {
+                          setAddingWorkout(false);
+                        }
+                      }}
                   />
                 ) : workoutSessions.length > 0 ? (
                   <div className="space-y-4">
@@ -891,11 +1054,16 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                           }`}></div>
                           <div>
                             <div className="font-medium text-gray-900 dark:text-white">
-                              {session.program}
+                              {session.title && session.title.trim() ? session.title : session.program}
                             </div>
                             <div className="text-sm text-gray-600 dark:text-gray-400">
                               {new Date(session.date).toLocaleDateString('fr-FR')} • {session.exercises} exercices
                             </div>
+                            {session.notes && String(session.notes).trim() && (
+                              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 break-words">
+                                {String(session.notes).length > 80 ? String(session.notes).slice(0, 77) + '...' : String(session.notes)}
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="text-right space-y-2">
@@ -909,7 +1077,21 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                             </div>
                           )}
                           <div>
-                            <button onClick={() => { setEditingIndex(index); setEditingWorkout(session); }} className="text-sm text-blue-600 hover:underline mr-3">Éditer</button>
+                            <button onClick={() => {
+                              setEditingIndex(index);
+                              const sAny: any = session;
+                              const normalized = {
+                                id: sAny.id,
+                                date: sAny.date,
+                                program: sAny.program || sAny.program_name || '',
+                                title: sAny.title && String(sAny.title).trim() ? String(sAny.title).trim() : (sAny.program || sAny.program_name || ''),
+                                duration: sAny.duration || sAny.duration_minutes || 0,
+                                exercises: Array.isArray(sAny.exercises) ? sAny.exercises.length : (sAny.exercises ?? sAny.exercises_count ?? 0),
+                                notes: sAny.notes || '',
+                                status: sAny.status || 'completed'
+                              };
+                              setEditingWorkout(normalized);
+                            }} className="text-sm text-blue-600 hover:underline mr-3">Éditer</button>
                             <button onClick={async () => {
                               if (!confirm('Supprimer cette séance ?')) return;
                               try {
@@ -940,7 +1122,7 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                       Commencez par ajouter les séances d'entraînement réalisées par votre client
                     </p>
                     <button 
-                      onClick={() => setAddingWorkout(true)}
+                      onClick={(e) => { e.stopPropagation(); console.log('[ClientDetail] Ajouter la première séance clicked'); setAddingWorkout(true); }}
                       className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
                     >
                       Ajouter la première séance
@@ -1773,6 +1955,10 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                 />
               </div>
               <div>
+                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Titre de la séance (optionnel)</label>
+                <input value={editingWorkout.title || ''} onChange={(e) => setEditingWorkout((prev:any)=> ({ ...prev, title: e.target.value }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" />
+              </div>
+              <div>
                 <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Programme</label>
                 <input value={editingWorkout.program} onChange={(e) => setEditingWorkout((prev:any)=> ({ ...prev, program: e.target.value }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" />
               </div>
@@ -1816,7 +2002,7 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                       client_id: client!.id,
                       date: editingWorkout.date,
                       duration_minutes: editingWorkout.duration || 0,
-                      program_name: editingWorkout.program,
+                      program_name: editingWorkout.title && String(editingWorkout.title).trim() ? String(editingWorkout.title).trim() : editingWorkout.program,
                       exercises_count: editingWorkout.exercises ?? 0,
                       status: editingWorkout.status || 'completed',
                       notes: editingWorkout.notes || ''
@@ -2773,6 +2959,7 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs }: WorkoutFormProps
   const [program, setProgram] = useState<string>('');
   const [duration, setDuration] = useState('');
   const [exercises, setExercises] = useState('');
+  const [title, setTitle] = useState('');
   const [status, setStatus] = useState<'completed' | 'missed'>('completed');
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -2795,6 +2982,7 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs }: WorkoutFormProps
       const workoutData = {
         date,
         program: program.trim(),
+        title: title.trim(),
         duration: parseInt(duration) || 0,
         exercises: parseInt(exercises) || 0,
         status,
@@ -2845,6 +3033,19 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs }: WorkoutFormProps
             <option value="missed">✗ Séance manquée</option>
           </select>
         </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          Titre de la séance (optionnel)
+        </label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Ex: Séance Pecs - Fente + HIIT"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+        />
       </div>
 
       <div>
