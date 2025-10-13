@@ -513,6 +513,24 @@ export const dataService = {
     return data;
   },
 
+  // Get a workout_session row by id including its exercises and nested sets
+  async getWorkoutSessionById(sessionId: string) {
+    if (!sessionId) return null;
+    const { data, error } = await supabase
+      .from('workout_sessions')
+      .select(`*, workout_session_exercises(*, workout_session_sets(*))`)
+      .eq('id', sessionId)
+      .single();
+
+    if (error) {
+      // don't throw for not found; return null so callers can fallback
+      console.warn('[dataService.getWorkoutSessionById] warning or error', error);
+      return null;
+    }
+
+    return data;
+  },
+
   // Legacy: get workout_sets rows by workout_exercise_id (optional)
   async getLegacyWorkoutSetsByExercise(workoutExerciseId: string) {
     const { data, error } = await supabase

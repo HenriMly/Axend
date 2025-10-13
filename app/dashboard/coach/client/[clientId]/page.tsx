@@ -2002,6 +2002,8 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                       client_id: client!.id,
                       date: editingWorkout.date,
                       duration_minutes: editingWorkout.duration || 0,
+                      // Persist a dedicated session_title (preferred) and keep program_name for legacy
+                      session_title: editingWorkout.title && String(editingWorkout.title).trim() ? String(editingWorkout.title).trim() : null,
                       program_name: editingWorkout.title && String(editingWorkout.title).trim() ? String(editingWorkout.title).trim() : editingWorkout.program,
                       exercises_count: editingWorkout.exercises ?? 0,
                       status: editingWorkout.status || 'completed',
@@ -2017,11 +2019,13 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                         body: JSON.stringify({ action: editingWorkout.id && !String(editingWorkout.id).startsWith('local-') ? 'update' : 'create', payload: editingWorkout.id && !String(editingWorkout.id).startsWith('local-') ? { id: editingWorkout.id, ...payload } : payload })
                       });
                       const json = await apiRes.json();
-                      if (apiRes.ok && json.data) {
+                        if (apiRes.ok && json.data) {
                         const created = json.data;
                         const newSession = {
                           id: created.id,
                           date: created.date,
+                          // prefer explicit session_title if present
+                          session_title: created.session_title || created.session_name || null,
                           program: created.program_name || created.program || editingWorkout.program,
                           duration: created.duration_minutes || editingWorkout.duration || 0,
                           exercises: created.exercises_count || editingWorkout.exercises || 0,
@@ -2049,6 +2053,8 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                         const fallback = {
                           id: editingWorkout.id || `local-${Date.now()}`,
                           date: editingWorkout.date,
+                          // store title locally as session_title for UI
+                          session_title: editingWorkout.title || null,
                           program: editingWorkout.program,
                           duration: editingWorkout.duration || 0,
                           exercises: editingWorkout.exercises ?? 0,
@@ -2071,6 +2077,7 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                       const fallback = {
                         id: editingWorkout.id || `local-${Date.now()}`,
                         date: editingWorkout.date,
+                        session_title: editingWorkout.title || null,
                         program: editingWorkout.program,
                         duration: editingWorkout.duration || 0,
                         exercises: editingWorkout.exercises ?? 0,

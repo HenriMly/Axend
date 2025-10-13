@@ -892,7 +892,7 @@ export default function ClientDashboard() {
 
             {workouts.length === 0 ? (
               <div className="relative bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl border border-white/20 dark:border-gray-700/30 p-12 text-center shadow-2xl">
-                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 rounded-3xl"></div>
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 rounded-3xl pointer-events-none"></div>
                 <EmptyState
                   title="Aucune séance enregistrée"
                   description="Commencez votre première séance d'entraînement dès maintenant !"
@@ -914,13 +914,62 @@ export default function ClientDashboard() {
                         // optimistic UI
                         setSelectedWorkoutObj(workout);
                         setSelectedDayObj(null);
+                        // Ensure the modal/details area is visible: create a minimal selectedProgram and open the modal
+                        try {
+                          const progName = (workout as any).program_name || (workout as any).programs?.name || (workout as any).session_title || 'Séance';
+                          setSelectedProgram({ id: (workout as any).program_id || null, name: progName } as any);
+                          setShowProgramModal(true);
+                        } catch (e) {
+                          console.warn('[ClientDashboard] failed to set selectedProgram for modal', e);
+                        }
                         window.scrollTo({ top: 0, behavior: 'smooth' });
 
                         console.debug('[ClientDashboard] loading session details for workout.id=', workout.id, 'workout=', workout);
 
-                        // Try normalized tables first
-                        const fetched = await dataService.getSessionExercisesWithSets(workout.id);
-                        console.debug('[ClientDashboard] getSessionExercisesWithSets returned:', fetched);
+                        // Determine best candidate session id field(s) returned by the view
+                        const candidateSessionIds = [
+                          workout.id,
+                          (workout as any).workout_session_id,
+                          (workout as any).session_id,
+                          (workout as any).session?.id,
+                          (workout as any).id__session,
+                        ].filter(Boolean) as string[];
+
+                        let fetched: any = null;
+
+                        // Try normalized tables first using any candidate id
+                        for (const sid of candidateSessionIds) {
+                          try {
+                            console.debug('[ClientDashboard] trying getSessionExercisesWithSets with sid=', sid);
+                            const f = await dataService.getSessionExercisesWithSets(sid);
+                            if (Array.isArray(f) && f.length > 0) {
+                              fetched = f;
+                              console.debug('[ClientDashboard] getSessionExercisesWithSets returned data for sid=', sid);
+                              break;
+                            }
+                          } catch (e) {
+                            console.warn('[ClientDashboard] getSessionExercisesWithSets failed for sid=', sid, e);
+                          }
+                        }
+
+                        // If still nothing, try fetching the full workout_session row (may include nested exercises/sets)
+                        if (!fetched) {
+                          const trySid = candidateSessionIds[0] || (workout as any).session_id || (workout as any).workout_session_id || null;
+                          if (trySid) {
+                            try {
+                              console.debug('[ClientDashboard] calling getWorkoutSessionById with id=', trySid);
+                              const ws = await dataService.getWorkoutSessionById(trySid);
+                              console.debug('[ClientDashboard] getWorkoutSessionById returned:', ws);
+                              if (ws && Array.isArray(ws.workout_session_exercises) && ws.workout_session_exercises.length > 0) {
+                                fetched = ws.workout_session_exercises.map((se: any) => ({ ...se, workout_session_sets: se.workout_session_sets || [] }));
+                              }
+                            } catch (e) {
+                              console.warn('[ClientDashboard] getWorkoutSessionById failed', e);
+                            }
+                          }
+                        }
+
+                        console.debug('[ClientDashboard] final fetched session_exercises:', fetched);
 
                         if (Array.isArray(fetched) && fetched.length > 0) {
                           const mapped = fetched.map((se: any) => ({
@@ -1001,7 +1050,7 @@ export default function ClientDashboard() {
                     className="cursor-pointer group relative bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl p-8 border border-white/20 dark:border-gray-700/30 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all duration-500 hover:shadow-2xl hover:shadow-emerald-500/20 hover:-translate-y-2"
                   >
                     <div>
-                      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 rounded-3xl"></div>
+                      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 rounded-3xl pointer-events-none"></div>
                       <div className="relative">
                         <div className="flex justify-between items-start mb-6">
                           <div className="flex items-start gap-4">
@@ -1010,7 +1059,15 @@ export default function ClientDashboard() {
                             </div>
                             <div>
                               <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
-                                {((workout as any)?.title) || (workout as any)?.program_name || workout.programs?.name || (workout as any)?.program || 'Séance libre'}
+                                {(
+                                  (workout as any)?.session_title ||
+                                  (workout as any)?.session_name ||
+                                  (workout as any)?.title ||
+                                  (workout as any)?.name ||
+                                  (workout as any)?.program_name ||
+                                  workout.programs?.name ||
+                                  'Séance libre'
+                                )}
                               </h3>
                               <p className="text-gray-600 dark:text-gray-400 font-medium">
                                 {new Date(workout.date).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
@@ -1218,7 +1275,7 @@ export default function ClientDashboard() {
 
               {/* Mon Coach */}
               <div className="group relative bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl p-8 border border-white/20 dark:border-gray-700/30 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all duration-500 hover:shadow-2xl hover:shadow-emerald-500/20 hover:-translate-y-2">
-                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 rounded-3xl"></div>
+                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 rounded-3xl pointer-events-none"></div>
                 <div className="relative">
                   <div className="flex items-center gap-4 mb-8">
                     <div className="w-16 h-16 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 flex items-center justify-center shadow-2xl shadow-emerald-500/25 group-hover:scale-110 transition-transform duration-300">

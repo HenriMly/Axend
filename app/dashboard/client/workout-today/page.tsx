@@ -152,7 +152,7 @@ export default function WorkoutToday() {
     setShowCompletedForm(true);
   };
 
-  const saveWorkoutSession = (duration: number, notes: string, nextGoals: string) => {
+  const saveWorkoutSession = async (duration: number, notes: string, nextGoals: string) => {
     if (!currentSession) return;
 
     const completedSession: WorkoutSession = {
@@ -163,12 +163,108 @@ export default function WorkoutToday() {
       completed: true
     };
 
-    // Sauvegarder dans l'historique
+    // Sauvegarder dans l'historique local
     const updatedHistory = [completedSession, ...workoutHistory];
     setWorkoutHistory(updatedHistory);
-    localStorage.setItem(`workout_history_${userProfile?.id}`, JSON.stringify(updatedHistory));
+    try {
+      if (userProfile?.id) {
+        localStorage.setItem(`workout_history_${userProfile.id}`, JSON.stringify(updatedHistory));
+      }
+    } catch (e) {
+      console.warn('Could not write workout history to localStorage', e);
+    }
 
-    // Reset
+    // Persist to backend: create a workout_sessions row with session_title
+    try {
+      const payload: any = {
+        client_id: userProfile?.id || null,
+        date: completedSession.date,
+        session_title: completedSession.workoutName,
+        duration_minutes: typeof duration !== 'undefined' ? duration : null,
+        notes: typeof notes !== 'undefined' ? notes : null,
+        status: 'completed',
+        exercises_count: Array.isArray(completedSession.exercises) ? completedSession.exercises.length : null
+      };
+
+      console.debug('[WorkoutToday] creating workout session with payload', payload);
+
+      const res = await fetch('/api/workout-sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', payload })
+      });
+
+      const json = await res.json();
+      if (!res.ok) {
+        console.warn('[WorkoutToday] failed to persist session to server', json);
+      } else {
+        console.debug('[WorkoutToday] persisted session', json);
+
+        // If we have exercises with completed sets, call complete_with_details to persist them
+        try {
+          const created = json.data;
+          const session_id = created?.id;
+          if (session_id && Array.isArray(completedSession.exercises) && completedSession.exercises.length > 0) {
+            // Map exercises into the shape expected by the API
+            const exercisesPayload = completedSession.exercises.map((ex: any) => {
+              // completedSets may be present when user recorded per-set details; else synthesize from actualSets
+              let completedSets: any[] = [];
+              if (Array.isArray(ex.completedSets) && ex.completedSets.length > 0) {
+                completedSets = ex.completedSets.map((s: any) => ({
+                  setNumber: s.setNumber ?? s.set_number ?? null,
+                  repsCompleted: s.repsCompleted ?? s.reps_completed ?? s.reps ?? null,
+                  weightUsed: s.weightUsed ?? s.weight_used ?? s.weight ?? null,
+                  durationSeconds: s.durationSeconds ?? s.duration_seconds ?? s.duration ?? null,
+                }));
+              } else if (typeof ex.actualSets === 'number' && ex.actualSets > 0) {
+                // create simple filled sets using the same reps/weight for each set
+                for (let i = 0; i < ex.actualSets; i++) {
+                  completedSets.push({
+                    setNumber: i + 1,
+                    repsCompleted: ex.actualReps ?? null,
+                    weightUsed: ex.actualWeight ?? null,
+                    durationSeconds: null,
+                  });
+                }
+              }
+
+              return {
+                workout_exercise_id: ex.id || null,
+                exercise_id: ex.exercise_id || null,
+                exercise_name: ex.exercise_name || ex.name || null,
+                order_in_workout: ex.order_in_workout ?? ex.order ?? null,
+                sets: typeof ex.actualSets !== 'undefined' ? ex.actualSets : (ex.sets || null),
+                reps: ex.actualReps ?? ex.reps ?? null,
+                weight: ex.actualWeight ?? ex.weight ?? null,
+                rest_time: ex.rest_time ?? ex.rest ?? null,
+                notes: ex.notes || null,
+                completedSets: completedSets
+              };
+            }).filter(Boolean);
+
+            if (exercisesPayload.length > 0) {
+              const completeRes = await fetch('/api/workout-sessions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'complete_with_details', payload: { session_id, duration_minutes: typeof duration !== 'undefined' ? duration : null, notes: typeof notes !== 'undefined' ? notes : null, exercises: exercisesPayload } })
+              });
+              const completeJson = await completeRes.json();
+              if (!completeRes.ok) {
+                console.warn('[WorkoutToday] complete_with_details failed', completeJson);
+              } else {
+                console.debug('[WorkoutToday] complete_with_details succeeded', completeJson);
+              }
+            }
+          }
+        } catch (innerErr) {
+          console.error('[WorkoutToday] error calling complete_with_details', innerErr);
+        }
+      }
+    } catch (err) {
+      console.error('[WorkoutToday] error persisting session', err);
+    }
+
+    // Reset UI
     setCurrentSession(null);
     setShowCompletedForm(false);
   };
