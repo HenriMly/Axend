@@ -48,10 +48,10 @@ export default function Home() {
           
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-8">
-            <a href="#features" className="text-gray-600 hover:text-blue-600 font-medium transition-colors">Fonctionnalités</a>
-            <a href="#pricing" className="text-gray-600 hover:text-blue-600 font-medium transition-colors">Tarifs</a>
-            <a href="#about" className="text-gray-600 hover:text-blue-600 font-medium transition-colors">À propos</a>
-            <a href="#contact" className="text-gray-600 hover:text-blue-600 font-medium transition-colors">Contact</a>
+            <Link href="/features" className="text-gray-600 hover:text-blue-600 font-medium transition-colors">Fonctionnalités</Link>
+            <Link href="/pricing" className="text-gray-600 hover:text-blue-600 font-medium transition-colors">Tarifs</Link>
+            <Link href="/about" className="text-gray-600 hover:text-blue-600 font-medium transition-colors">À propos</Link>
+            <Link href="/contact" className="text-gray-600 hover:text-blue-600 font-medium transition-colors">Contact</Link>
           </nav>
           
           <div className="flex gap-3 items-center">

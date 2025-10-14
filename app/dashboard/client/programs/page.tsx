@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { dataService } from '@/lib/data';
 import { useRequireClient } from '@/lib/auth-context';
+import { supabase } from '@/lib/supabase';
 
 interface Program {
   id: string;
@@ -51,8 +52,23 @@ export default function ClientPrograms() {
       try {
         console.log('[ClientPrograms] Loading programs for client:', userProfile.id);
         
-        // Charger les programmes avancés
-        const clientPrograms = await dataService.getClientProgramsAdvanced(userProfile.id);
+        // D'abord récupérer les données client par email pour avoir le vrai ID
+        const { data: completeClientData, error: clientError } = await supabase
+          .from('clients')
+          .select('*')
+          .eq('email', userProfile.email)
+          .single();
+          
+        if (clientError || !completeClientData) {
+          console.error('[ClientPrograms] Client not found for email:', userProfile.email, clientError);
+          return;
+        }
+        
+        const actualClientId = completeClientData.id;
+        console.log('[ClientPrograms] Using actual client ID:', actualClientId);
+        
+        // Charger les programmes avancés avec l'ID client réel
+        const clientPrograms = await dataService.getClientProgramsAdvanced(actualClientId);
         console.log('[ClientPrograms] Programs loaded:', clientPrograms);
         
         if (mounted) {
@@ -60,7 +76,7 @@ export default function ClientPrograms() {
         }
         
         // Charger la séance du jour
-        const todayData = await dataService.getTodayWorkout(userProfile.id);
+        const todayData = await dataService.getTodayWorkout(actualClientId);
         console.log('[ClientPrograms] Today workout:', todayData);
         
         if (mounted && todayData && todayData.length > 0) {

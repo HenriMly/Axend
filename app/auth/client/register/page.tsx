@@ -24,15 +24,14 @@ export default function ClientRegister() {
     setSuccess('');
 
     try {
+      console.log('🔥 Tentative création client avec:', { email, name, coachCode });
       const result = await authService.signUpClient(email, password, name, coachCode);
       
+      console.log('✅ Résultat inscription:', result);
+      
       if (result.user) {
-        if (!result.user.email_confirmed_at) {
-          setSuccess('Inscription réussie ! Vérifiez votre email pour confirmer votre compte.');
-        } else {
-          setSuccess('Compte créé avec succès ! Assignation au coach effectuée.');
-          setTimeout(() => router.push('/dashboard/client'), 2000);
-        }
+        setSuccess('Compte créé avec succès ! Assignation au coach effectuée.');
+        setTimeout(() => router.push('/dashboard/client'), 2000);
       }
     } catch (err: any) {
       const message = err?.message || 'Erreur lors de l\'inscription';

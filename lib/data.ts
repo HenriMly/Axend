@@ -226,6 +226,37 @@ export const dataService = {
     console.log('[dataService.getClientProgramsAdvanced] Loading advanced programs for client:', clientId);
     
     try {
+      // DEBUG: Check if any programs exist for this client
+      console.log('[dataService.getClientProgramsAdvanced] DEBUG: Checking if programs table has data for client:', clientId);
+      const { data: debugData, error: debugError } = await supabase
+        .from('programs')
+        .select('id, name, client_id, created_at')
+        .eq('client_id', clientId);
+      
+      console.log('[dataService.getClientProgramsAdvanced] DEBUG: Basic programs query result:', { debugData, debugError });
+      
+      if (debugData && debugData.length === 0) {
+        console.log('[dataService.getClientProgramsAdvanced] DEBUG: No programs found for client_id, trying coach_id lookup...');
+        
+        // Maybe programs are linked by coach_id, let's check what coach this client belongs to
+        const { data: clientData, error: clientError } = await supabase
+          .from('clients')
+          .select('coach_id')
+          .eq('id', clientId)
+          .single();
+          
+        console.log('[dataService.getClientProgramsAdvanced] DEBUG: Client coach lookup:', { clientData, clientError });
+        
+        if (clientData?.coach_id) {
+          const { data: coachPrograms, error: coachError } = await supabase
+            .from('programs')
+            .select('id, name, client_id, coach_id, created_at')
+            .eq('coach_id', clientData.coach_id);
+            
+          console.log('[dataService.getClientProgramsAdvanced] DEBUG: Programs by coach_id:', { coachPrograms, coachError });
+        }
+      }
+      
       // First, try to get programs with the advanced structure
       const { data, error } = await supabase
         .from('programs')
@@ -242,6 +273,8 @@ export const dataService = {
         .eq('client_id', clientId)
         .order('created_at', { ascending: false })
 
+      console.log('[dataService.getClientProgramsAdvanced] Advanced query result:', { data, error, query: 'client_id=' + clientId });
+
       if (error) {
         console.warn('[dataService.getClientProgramsAdvanced] Error with advanced query:', error);
         console.log('[dataService.getClientProgramsAdvanced] Falling back to basic query...');
@@ -253,6 +286,7 @@ export const dataService = {
           .eq('client_id', clientId)
           .order('created_at', { ascending: false })
         
+        console.log('[dataService.getClientProgramsAdvanced] Basic fallback query result:', { basicData, basicError });
         if (basicError) throw basicError;
         return basicData;
       }

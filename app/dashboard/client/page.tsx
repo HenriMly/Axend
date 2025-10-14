@@ -151,12 +151,20 @@ export default function ClientDashboard() {
       
       setClientData(mappedClientData as ClientData);
       
-      // Charger les programmes, séances et mesures
+      // Charger les programmes, séances et mesures - UTILISER L'ID DU CLIENT (pas l'ID auth)
+      const actualClientId = completeClientData.id; // L'ID réel du client dans la table
+      console.log('[ClientDashboard] Auth ID:', userProfile.id);
+      console.log('[ClientDashboard] Actual Client ID:', actualClientId);
+      
       const [clientPrograms, clientWorkouts, clientMeasurements] = await Promise.all([
-        dataService.getClientProgramsAdvanced(userProfile.id),
-        dataService.getClientWorkouts(userProfile.id),
-        dataService.getClientMeasurements(userProfile.id)
+        dataService.getClientProgramsAdvanced(actualClientId),
+        dataService.getClientWorkouts(actualClientId),
+        dataService.getClientMeasurements(actualClientId)
       ]);
+      
+      console.log('[ClientDashboard] Programs loaded:', clientPrograms);
+      console.log('[ClientDashboard] Workouts loaded:', clientWorkouts);
+      console.log('[ClientDashboard] Measurements loaded:', clientMeasurements);
       
       setPrograms(clientPrograms || []);
       setWorkouts(clientWorkouts || []);

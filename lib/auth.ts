@@ -59,13 +59,13 @@ export const authService = {
     console.log('🎯 Coach trouvé:', coach);
 
     try {
-      const redirectTo = (typeof window !== 'undefined' ? window.location.origin : process.env.NEXT_PUBLIC_SITE_URL) || undefined
+      console.log('🚀 Création du compte utilisateur...');
       const res = await supabase.auth.signUp({
         email: normalizedEmail,
         password,
         options: {
           data: { name, role: 'client', coach_id: coach.id },
-          emailRedirectTo: redirectTo,
+          emailRedirectTo: undefined, // Pas d'email de confirmation
         },
       })
 
@@ -76,36 +76,45 @@ export const authService = {
       }
 
       const signupData = res.data
+      console.log('✅ Utilisateur auth créé:', signupData.user?.id);
 
-      // If user object wasn't returned, bail out (confirmation flow or magic link)
-      if (!signupData?.user) return signupData
-
-      // If the user hasn't confirmed their email yet, do NOT create the client row now.
-      if (!signupData.user.email_confirmed_at) {
-        console.info('[auth.signUpClient] user created but not confirmed; skipping client insert until confirmation')
-        return signupData
+      // Si pas d'utilisateur créé, erreur
+      if (!signupData?.user) {
+        throw new Error('Erreur lors de la création du compte utilisateur');
       }
 
-      // Créer le client directement (RLS désactivé temporairement)
+      const userAuthId = signupData.user.id;
+      console.log('🔑 ID Auth à utiliser:', userAuthId);
+
+      // Créer le client avec seulement les champs requis (laisser les defaults)
+      console.log('📝 Création du profil client...');
       const { data: clientData, error: clientError } = await supabase
         .from('clients')
         .insert({
-          id: signupData.user.id,
-          name,
-          email: normalizedEmail,
+          id: userAuthId,
           coach_id: coach.id,
-          created_at: new Date().toISOString()
+          name,
+          email: normalizedEmail
+          // Laisser joined_date, created_at, updated_at utiliser leurs defaults
+          // current_weight, target_weight, age, height sont nullable donc OK
         })
         .select()
         .single();
 
       if (clientError) {
         console.error('[auth.signUpClient] client creation error', clientError);
-        throw new Error('Erreur lors de la création du profil client');
+        console.error('[auth.signUpClient] error details:', {
+          message: clientError.message,
+          code: clientError.code,
+          details: clientError.details,
+          hint: clientError.hint
+        });
+        throw new Error(`Erreur lors de la création du profil client: ${clientError.message}`);
       }
 
-      const createResult = { success: true, client: clientData };
-
+      console.log('🎉 Client créé avec succès:', clientData);
+      console.log('🔍 Vérification IDs - Auth:', userAuthId, 'Client:', clientData.id);
+      console.log('✅ IDs correspondent ?', userAuthId === clientData.id);
       return signupData
     } catch (err) {
       console.error('[auth.signUpClient] unexpected:', err)
@@ -171,19 +180,31 @@ export const authService = {
         throw new Error(msg)
       }
 
-      // Vérifier que l'utilisateur est bien un client
+      // Vérifier que l'utilisateur est bien un client - CHERCHER PAR EMAIL
       if (data.user) {
-        const { data: clientProfile } = await supabase
+        console.log('[auth.signInClient] Recherche client par EMAIL:', normalizedEmail);
+        const { data: clientProfile, error: clientLookupError } = await supabase
           .from('clients')
-          .select('id, name')
-          .eq('id', data.user.id)
+          .select('id, name, email, coach_id')
+          .eq('email', normalizedEmail)
           .single()
 
+        console.log('[auth.signInClient] Résultat recherche client:', {
+          found: !!clientProfile,
+          profile: clientProfile,
+          error: clientLookupError
+        });
+
         if (!clientProfile) {
+          console.error('[auth.signInClient] Client non trouvé dans la table clients pour email:', normalizedEmail);
+          console.error('[auth.signInClient] Lookup error:', clientLookupError);
+          
           // Déconnecter l'utilisateur s'il n'est pas un client
           await supabase.auth.signOut()
           throw new Error('Ce compte n\'est pas un compte client. Veuillez utiliser le formulaire coach.')
         }
+
+        console.log('✅ [auth.signInClient] Client trouvé ! Connexion réussie:', clientProfile.name);
       }
 
       return data
@@ -215,16 +236,54 @@ export const authService = {
         return { ...coach, role: 'coach' };
       }
 
-      // Try client with embedded coach relation
+      // Try client with embedded coach relation - d'abord par ID puis par email
       console.log('[auth.getUserProfile] Trying client lookup with embedded coach...');
-      const { data: client, error } = await supabase.from('clients').select('*, coaches(name, email, coach_code)').eq('id', userId).single()
+      let { data: client, error } = await supabase.from('clients').select('*, coaches(name, email, coach_code)').eq('id', userId).single()
 
+      // Si pas trouvé par ID, essayer par email auth
+      if (!client && error?.code === 'PGRST116') {
+        console.log('[auth.getUserProfile] ID lookup failed, trying by email...');
+        const { data: authUser } = await supabase.auth.getUser();
+        if (authUser?.user?.email) {
+          const { data: clientByEmail, error: emailError } = await supabase
+            .from('clients')
+            .select('*, coaches(name, email, coach_code)')
+            .eq('email', authUser.user.email)
+            .single();
+          
+          client = clientByEmail;
+          error = emailError;
+          console.log('[auth.getUserProfile] Email lookup result:', { client, error });
+        }
+      }
+
+      console.log('[auth.getUserProfile] Final client result:', { client, error });
+      
       if (error) {
         console.warn('[auth.getUserProfile] embedded client select error:', error.code, error.message);
 
-        // Fallback: simple client select
+        // Fallback: simple client select - d'abord par ID puis par email  
         console.log('[auth.getUserProfile] Trying simple client lookup...');
-        const { data: clientSimple, error: clientSimpleErr } = await supabase.from('clients').select('*').eq('id', userId).single()
+        let { data: clientSimple, error: clientSimpleErr } = await supabase.from('clients').select('*').eq('id', userId).single()
+
+        // Si pas trouvé par ID, essayer par email
+        if (!clientSimple && clientSimpleErr?.code === 'PGRST116') {
+          console.log('[auth.getUserProfile] Simple ID lookup failed, trying by email...');
+          const { data: authUser } = await supabase.auth.getUser();
+          if (authUser?.user?.email) {
+            const { data: clientByEmailSimple, error: emailSimpleError } = await supabase
+              .from('clients')
+              .select('*')
+              .eq('email', authUser.user.email)
+              .single();
+            
+            clientSimple = clientByEmailSimple;
+            clientSimpleErr = emailSimpleError;
+            console.log('[auth.getUserProfile] Simple email lookup result:', { clientSimple, clientSimpleErr });
+          }
+        }
+
+        console.log('[auth.getUserProfile] Final simple client result:', { clientSimple, clientSimpleErr });
 
         if (clientSimpleErr) {
           // Si l'erreur est "0 rows" (PGRST116), c'est normal - l'utilisateur n'a pas de profil client
@@ -256,7 +315,9 @@ export const authService = {
 
       if (client) {
         console.log('[auth.getUserProfile] Found client profile:', client.name);
-        return { ...client, role: 'client' };
+        const result = { ...client, role: 'client' };
+        console.log('[auth.getUserProfile] Returning embedded client result:', result);
+        return result;
       }
 
       console.log('[auth.getUserProfile] No profile found for user');
