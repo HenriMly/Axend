@@ -346,8 +346,30 @@ export default function ActiveWorkout() {
     );
   }
 
-  const currentExercise = workout[currentExerciseIndex];
+  const currentExercise = workout?.[currentExerciseIndex];
   const currentSet = currentExercise?.completedSets[currentSetIndex];
+
+  // Protection si workout ou currentExercise n'existent pas
+  if (!workout || !currentExercise) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">
+            Exercice introuvable
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400 mb-6">
+            Impossible de charger l'exercice courant
+          </p>
+          <button
+            onClick={() => window.location.href = '/dashboard/client'}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            Retour au dashboard
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white dark:from-gray-900 dark:to-gray-800">

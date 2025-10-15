@@ -27,12 +27,51 @@ export const authService = {
       })
 
       if (res.error) {
-        const msg = extractErrorMessage(res.error)
-        console.error('[auth.signUpCoach] supabase error:', res.error)
-        throw new Error(msg)
+        // Ignorer l'erreur d'email de confirmation en dev  
+        if (res.error.message === 'Error sending confirmation email') {
+          console.warn('[auth.signUpCoach] Ignoring email confirmation error in dev:', res.error)
+        } else {
+          const msg = extractErrorMessage(res.error)
+          console.error('[auth.signUpCoach] supabase error:', res.error)
+          throw new Error(msg)
+        }
       }
 
-      return res.data
+      const signupData = res.data
+      console.log('✅ Coach auth créé:', signupData.user?.id);
+
+      // Si pas d'utilisateur créé, erreur
+      if (!signupData?.user) {
+        throw new Error('Erreur lors de la création du compte coach');
+      }
+
+      const userAuthId = signupData.user.id;
+      console.log('🔑 ID Auth coach à utiliser:', userAuthId);
+
+      // Créer le profil coach avec un coach_code unique
+      const coachCode = `COACH_${Date.now().toString().slice(-6)}`;
+      console.log('📝 Création du profil coach avec code:', coachCode);
+      
+      const { data: coachData, error: coachError } = await supabase
+        .from('coaches')
+        .upsert({
+          id: userAuthId,
+          coach_code: coachCode,
+          name,
+          email: normalizedEmail
+        }, {
+          onConflict: 'id'
+        })
+        .select()
+        .single();
+
+      if (coachError) {
+        console.error('[auth.signUpCoach] coach creation error', coachError);
+        throw new Error(`Erreur lors de la création du profil coach: ${coachError.message}`);
+      }
+
+      console.log('🎉 Coach créé avec succès:', coachData);
+      return signupData
     } catch (err) {
       console.error('[auth.signUpCoach] unexpected:', err)
       throw new Error(extractErrorMessage(err))
@@ -70,9 +109,15 @@ export const authService = {
       })
 
       if (res.error) {
-        const msg = extractErrorMessage(res.error)
-        console.error('[auth.signUpClient] supabase error:', res.error)
-        throw new Error(msg)
+        // Ignorer l'erreur d'email de confirmation en dev
+        if (res.error.message === 'Error sending confirmation email') {
+          console.warn('[auth.signUpClient] Ignoring email confirmation error in dev:', res.error)
+          // Continuer avec l'utilisateur créé même si l'email a échoué
+        } else {
+          const msg = extractErrorMessage(res.error)
+          console.error('[auth.signUpClient] supabase error:', res.error)
+          throw new Error(msg)
+        }
       }
 
       const signupData = res.data
@@ -86,17 +131,19 @@ export const authService = {
       const userAuthId = signupData.user.id;
       console.log('🔑 ID Auth à utiliser:', userAuthId);
 
-      // Créer le client avec seulement les champs requis (laisser les defaults)
+      // Créer le client avec upsert pour gérer les doublons
       console.log('📝 Création du profil client...');
       const { data: clientData, error: clientError } = await supabase
         .from('clients')
-        .insert({
+        .upsert({
           id: userAuthId,
           coach_id: coach.id,
           name,
           email: normalizedEmail
           // Laisser joined_date, created_at, updated_at utiliser leurs defaults
           // current_weight, target_weight, age, height sont nullable donc OK
+        }, {
+          onConflict: 'id'
         })
         .select()
         .single();
