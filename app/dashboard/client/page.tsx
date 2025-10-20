@@ -8,6 +8,123 @@ import { useRequireClient } from '@/lib/auth-context';
 import { dataService } from '@/lib/data';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
+// Composant pour ajouter une séance d'entraînement (défini avant le composant principal
+// pour garantir qu'il est disponible au runtime lorsque rendu plus haut dans le fichier)
+interface WorkoutFormProps {
+  clientId: string;
+  onCancel: () => void;
+  onSaved: (workout: any) => void;
+  programs?: string[];
+}
+
+function WorkoutForm({ clientId, onCancel, onSaved, programs }: WorkoutFormProps) {
+  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [program, setProgram] = useState<string>('');
+  const [duration, setDuration] = useState('');
+  const [exercises, setExercises] = useState('');
+  const [title, setTitle] = useState('');
+  const [status, setStatus] = useState<'completed' | 'missed'>('completed');
+  const [notes, setNotes] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (programs && programs.length > 0 && !program) {
+      setProgram(programs[0]);
+    }
+  }, [programs]);
+
+  const handleSave = async () => {
+    if (!program.trim() || !duration.trim() || !exercises.trim()) {
+      alert('Veuillez remplir tous les champs obligatoires');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const workoutData = {
+        date,
+        program: program.trim(),
+        title: title.trim(),
+        duration: parseInt(duration) || 0,
+        exercises: parseInt(exercises) || 0,
+        status,
+        notes: notes.trim()
+      };
+
+      onSaved(workoutData);
+    } catch (error) {
+      console.error('Error saving workout:', error);
+      alert('Erreur lors de la sauvegarde');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          ➕ Ajouter une séance d'entraînement
+        </h3>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Date *</label>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Statut *</label>
+          <select value={status} onChange={(e) => setStatus(e.target.value as 'completed' | 'missed')} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+            <option value="completed">✓ Séance réalisée</option>
+            <option value="missed">✗ Séance manquée</option>
+          </select>
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Titre de la séance (optionnel)</label>
+        <input type="text" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ex: Séance Pecs - Fente + HIIT" className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Nom du programme *</label>
+        {programs && programs.length > 0 ? (
+          <select value={program} onChange={(e) => setProgram(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500">
+            <option value="">Sélectionner un programme...</option>
+            {programs.map((p, i) => (<option key={i} value={p}>{p}</option>))}
+          </select>
+        ) : (
+          <input type="text" value={program} onChange={(e) => setProgram(e.target.value)} placeholder="Ex: Pectoraux/Triceps, Jambes, Cardio..." className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Durée (minutes) *</label>
+          <input type="number" value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="Ex: 45" min="1" className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Nombre d'exercices *</label>
+          <input type="number" value={exercises} onChange={(e) => setExercises(e.target.value)} placeholder="Ex: 8" min="1" className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Notes (optionnel)</label>
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Commentaires sur la séance, difficultés rencontrées, remarques..." rows={3} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+      </div>
+
+      <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-600">
+        <button onClick={onCancel} className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-600 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500">Annuler</button>
+        <button onClick={handleSave} disabled={isSaving} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">{isSaving ? 'Enregistrement...' : 'Ajouter la séance'}</button>
+      </div>
+    </div>
+  );
+}
+
 interface ClientData {
   id: string;
   name: string;
@@ -103,6 +220,8 @@ export default function ClientDashboard() {
   const [selectedWorkoutObj, setSelectedWorkoutObj] = useState<any | null>(null);
   const [isLoadingSessionDetails, setIsLoadingSessionDetails] = useState(false);
   const [isStartingProgram, setIsStartingProgram] = useState(false);
+  // State to open the add-workout form (mirrors coach view)
+  const [addingWorkout, setAddingWorkout] = useState(false);
   
   // États pour la modal d'ajout de mesure
   const [showAddMeasurementModal, setShowAddMeasurementModal] = useState(false);
@@ -933,13 +1052,90 @@ export default function ClientDashboard() {
                 <h2 className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent">Mes Séances</h2>
                 <p className="text-gray-600 dark:text-gray-400 mt-2">Suivez vos entraînements et performances</p>
               </div>
-              <button className="group relative px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl font-semibold shadow-2xl shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:scale-105 transition-all duration-300 overflow-hidden">
-                <div className="absolute inset-0 bg-gradient-to-r from-emerald-700 to-teal-700 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                <span className="relative flex items-center gap-2">
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                  Nouvelle séance
-                </span>
-              </button>
+              <div>
+                {!addingWorkout ? (
+                  <button onClick={(e) => { e.stopPropagation(); setAddingWorkout(true); }} className="group relative px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl font-semibold shadow-2xl shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:scale-105 transition-all duration-300 overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-r from-emerald-700 to-teal-700 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                    <span className="relative flex items-center gap-2">
+                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                      Nouvelle séance
+                    </span>
+                  </button>
+                ) : (
+                  // Render the same WorkoutForm component defined later in this file
+                  <div className="mt-4">
+                    <WorkoutForm
+                      clientId={userProfile?.id || ''}
+                      programs={programs.map(p => p.name)}
+                      onCancel={() => setAddingWorkout(false)}
+                      onSaved={async (workout: any) => {
+                        try {
+                          const payload: any = {
+                            client_id: clientData?.id || userProfile?.id || null,
+                            date: workout.date,
+                            duration_minutes: workout.duration || 0,
+                            program_name: workout.title && workout.title.trim() ? workout.title.trim() : (workout.program || ''),
+                            exercises_count: workout.exercises || 0,
+                            status: workout.status || 'completed',
+                            notes: workout.notes || ''
+                          };
+
+                          const apiRes = await fetch('/api/workout-sessions', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ action: 'create', payload })
+                          });
+                          const json = await apiRes.json();
+                          if (apiRes.ok && json.data) {
+                            const created = json.data;
+                            const newSession = {
+                              id: created.id,
+                              date: created.date,
+                              program: created.program_name || created.program || payload.program_name,
+                              duration: created.duration_minutes || payload.duration_minutes || 0,
+                              exercises: created.exercises_count || payload.exercises_count || 0,
+                              notes: created.notes || payload.notes || '',
+                              status: created.status || payload.status || 'completed'
+                            };
+                            setWorkouts(prev => [newSession as any, ...prev]);
+                          } else {
+                            // fallback to local add
+                            console.error('API create workout failed', json);
+                            const fallback = {
+                              id: `local-${Date.now()}`,
+                              date: workout.date,
+                              program: workout.program,
+                              title: workout.title,
+                              duration: workout.duration || 0,
+                              exercises: workout.exercises || 0,
+                              notes: workout.notes || '',
+                              status: workout.status || 'completed'
+                            };
+                            setWorkouts(prev => [fallback as any, ...prev]);
+                            alert('Séance ajoutée localement, mais la sauvegarde sur le serveur a échoué.');
+                          }
+                        } catch (e) {
+                          console.error('Failed to create workout via API', e);
+                          const fallback = {
+                            id: `local-${Date.now()}`,
+                            date: workout.date,
+                            program: workout.program,
+                            title: workout.title,
+                            duration: workout.duration || 0,
+                            exercises: workout.exercises || 0,
+                            notes: workout.notes || '',
+                            status: workout.status || 'completed'
+                          };
+                          setWorkouts(prev => [fallback as any, ...prev]);
+                          alert('Séance ajoutée localement (API indisponible).');
+                        } finally {
+                          setAddingWorkout(false);
+                        }
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
 
             {workouts.length === 0 ? (

@@ -1647,8 +1647,21 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                 </div>
               </div>
             ))}
-            <div>
-              <button onClick={() => setCreatingProgram(true)} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg">Créer un programme</button>
+            <div className="mt-4 flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-cyan-50 dark:from-blue-900/10 dark:to-cyan-900/10 rounded-lg border border-blue-100 dark:border-blue-800">
+                  <h4 className="text-sm font-semibold text-gray-900 dark:text-white">Programmes</h4>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Créez des programmes structurés par jour et gérez l'ordre des exercices.</p>
+                </div>
+                <div className="text-sm text-gray-600 dark:text-gray-400">Astuce: ajoutez des séances puis cliquez sur "Gérer les exercices" pour réorganiser et affiner chaque séance.</div>
+              </div>
+
+              <div>
+                <button onClick={() => setCreatingProgram(true)} className="inline-flex items-center space-x-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-lg shadow">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4"/></svg>
+                  <span>Créer un programme</span>
+                </button>
+              </div>
             </div>
           </div>
         )}
@@ -2578,13 +2591,22 @@ function ProgramForm({ initial, clientId, coachId, onCancel, onSaved }: ProgramF
         console.log('[ProgramForm] Program data:', programData);
         console.log('[ProgramForm] Coach ID:', coachId, 'Client ID:', clientId);
         
+        // Normalize exercise ordering before sending to server
+        const normalizedDays = programDays.map(d => ({
+          ...d,
+          workouts: d.workouts.map((w: any) => ({
+            ...w,
+            exercises: (w.exercises || []).map((ex: any, i: number) => ({ ...ex, order_in_workout: i + 1 }))
+          }))
+        }));
+
         // Utilisons maintenant le système avancé avec les nouvelles tables !
         const advancedProgramData = {
           name,
           description,
           weeks,
           goal,
-          days: programDays
+          days: normalizedDays
         };
         
         if (initial && initial.id) {
@@ -2684,6 +2706,52 @@ function ProgramForm({ initial, clientId, coachId, onCancel, onSaved }: ProgramF
         )
       } : day
     ));
+  };
+
+  // Reorder and edit helpers for exercises
+  const moveExerciseUp = (dayIndex: number, workoutIndex: number, exIndex: number) => {
+    if (exIndex <= 0) return;
+    setProgramDays(prev => prev.map((day, di) => {
+      if (di !== dayIndex) return day;
+      const workouts = day.workouts.map((w, wi) => {
+        if (wi !== workoutIndex) return w;
+        const exercises = [...w.exercises];
+        const [item] = exercises.splice(exIndex, 1);
+        exercises.splice(exIndex - 1, 0, item);
+        // normalize order
+        exercises.forEach((e: any, i: number) => e.order_in_workout = i + 1);
+        return { ...w, exercises };
+      });
+      return { ...day, workouts };
+    }));
+  };
+
+  const moveExerciseDown = (dayIndex: number, workoutIndex: number, exIndex: number) => {
+    setProgramDays(prev => prev.map((day, di) => {
+      if (di !== dayIndex) return day;
+      const workouts = day.workouts.map((w, wi) => {
+        if (wi !== workoutIndex) return w;
+        const exercises = [...w.exercises];
+        if (exIndex >= exercises.length - 1) return w;
+        const [item] = exercises.splice(exIndex, 1);
+        exercises.splice(exIndex + 1, 0, item);
+        exercises.forEach((e: any, i: number) => e.order_in_workout = i + 1);
+        return { ...w, exercises };
+      });
+      return { ...day, workouts };
+    }));
+  };
+
+  const editExerciseField = (dayIndex: number, workoutIndex: number, exIndex: number, field: string, value: any) => {
+    setProgramDays(prev => prev.map((day, di) => {
+      if (di !== dayIndex) return day;
+      const workouts = day.workouts.map((w, wi) => {
+        if (wi !== workoutIndex) return w;
+        const exercises = w.exercises.map((ex, ei) => ei === exIndex ? { ...ex, [field]: value } : ex);
+        return { ...w, exercises };
+      });
+      return { ...day, workouts };
+    }));
   };
 
   if (step === 1) {
@@ -3078,22 +3146,50 @@ function ProgramForm({ initial, clientId, coachId, onCancel, onSaved }: ProgramF
             ) : (
               <div className="space-y-2">
                 {currentWorkout.exercises.map((ex: any, idx: number) => (
-                  <div key={idx} className="p-3 bg-white dark:bg-gray-800 rounded border flex items-center justify-between">
-                    <div>
-                      <div className="font-semibold">{ex.exercise_name || ex.name}</div>
-                      <div className="text-xs text-gray-500">{ex.exercise_category || ex.category || ''}</div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <button onClick={() => {
-                        // remove from programDays
-                        setProgramDays(prev => prev.map((d, di) => di === selectedDayIndex ? {
-                          ...d,
-                          workouts: d.workouts.map((w, wi) => wi === selectedWorkoutIndex ? { ...w, exercises: w.exercises.filter((_, i2) => i2 !== idx) } : w)
-                        } : d));
-                      }} className="text-red-600">Supprimer</button>
-                    </div>
-                  </div>
-                ))}
+                      <div key={idx} className="p-3 bg-white dark:bg-gray-800 rounded border flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                        <div className="flex-1 w-full md:w-auto">
+                          <div className="flex items-start md:items-center justify-between">
+                            <div className="min-w-0">
+                              <div className="font-semibold truncate">{ex.exercise_name || ex.name}</div>
+                              <div className="text-xs text-gray-500 truncate">{ex.exercise_category || ex.category || ''}</div>
+                            </div>
+                            <div className="flex items-center space-x-2 text-sm text-gray-500 mt-2 md:mt-0">
+                              <button onClick={() => moveExerciseUp(selectedDayIndex!, selectedWorkoutIndex!, idx)} className="px-2 py-1 bg-gray-100 rounded hover:bg-gray-200">↑</button>
+                              <button onClick={() => moveExerciseDown(selectedDayIndex!, selectedWorkoutIndex!, idx)} className="px-2 py-1 bg-gray-100 rounded hover:bg-gray-200">↓</button>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <label className="text-xs text-gray-500">Sets</label>
+                              <input value={ex.sets ?? ''} onChange={(e) => editExerciseField(selectedDayIndex!, selectedWorkoutIndex!, idx, 'sets', parseInt(e.target.value) || 0)} className="w-20 sm:w-16 px-2 py-1 border rounded bg-white dark:bg-gray-700 text-sm" />
+                              <label className="text-xs text-gray-500">Reps</label>
+                              <input value={ex.reps ?? ''} onChange={(e) => editExerciseField(selectedDayIndex!, selectedWorkoutIndex!, idx, 'reps', e.target.value)} className="w-24 sm:w-20 px-2 py-1 border rounded bg-white dark:bg-gray-700 text-sm" />
+                            </div>
+                            <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2">
+                              <label className="text-xs text-gray-500">Poids</label>
+                              <input value={ex.weight ?? ''} onChange={(e) => editExerciseField(selectedDayIndex!, selectedWorkoutIndex!, idx, 'weight', e.target.value)} className="w-24 sm:w-20 px-2 py-1 border rounded bg-white dark:bg-gray-700 text-sm" />
+                              <label className="text-xs text-gray-500">Repos</label>
+                              <input value={ex.rest_time ?? ''} onChange={(e) => editExerciseField(selectedDayIndex!, selectedWorkoutIndex!, idx, 'rest_time', parseInt(e.target.value) || 0)} className="w-24 sm:w-20 px-2 py-1 border rounded bg-white dark:bg-gray-700 text-sm" />
+                            </div>
+                          </div>
+
+                          <div className="mt-3">
+                            <label className="text-xs text-gray-500">Notes</label>
+                            <input value={ex.notes ?? ''} onChange={(e) => editExerciseField(selectedDayIndex!, selectedWorkoutIndex!, idx, 'notes', e.target.value)} className="w-full px-2 py-1 border rounded bg-white dark:bg-gray-700 text-sm" />
+                          </div>
+                        </div>
+                        <div className="flex-shrink-0 flex items-start md:items-center md:flex-col md:justify-center space-y-2 md:ml-4">
+                          <button onClick={() => {
+                            // remove from programDays
+                            setProgramDays(prev => prev.map((d, di) => di === selectedDayIndex ? {
+                              ...d,
+                              workouts: d.workouts.map((w, wi) => wi === selectedWorkoutIndex ? { ...w, exercises: w.exercises.filter((_, i2) => i2 !== idx) } : w)
+                            } : d));
+                          }} className="text-red-600 px-3 py-1 border border-red-200 rounded">Supprimer</button>
+                        </div>
+                      </div>
+                    ))}
               </div>
             )}
           </div>
