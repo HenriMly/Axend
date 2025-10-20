@@ -51,29 +51,58 @@ export async function POST(req: Request) {
     const { action, payload } = body
 
     if (action === 'create') {
-      const { data, error } = await supabaseAdmin.from('workout_sessions').insert(payload).select().single()
+      // Normalize payload to DB column names: map exercises_list -> exercises (jsonb)
+      const insertPayload: any = { ...payload };
+      if (Array.isArray(insertPayload.exercises_list) && !Array.isArray(insertPayload.exercises)) {
+        insertPayload.exercises = insertPayload.exercises_list;
+      }
+      // Remove client-only fields that don't exist in the DB schema
+      if (typeof insertPayload.exercises_list !== 'undefined') delete insertPayload.exercises_list;
+
+      const { data, error } = await supabaseAdmin.from('workout_sessions').insert(insertPayload).select().single()
         if (error) {
-          console.error('[workout-sessions][create] error:', error)
-          return NextResponse.json({ ok: false, error: errorText(error) }, { status: 500 })
+          console.error('[workout-sessions][create] error:', error, { payload })
+          return NextResponse.json({ ok: false, error: errorText(error), details: safeSerialize(error) }, { status: 500 })
         }
-      return NextResponse.json({ ok: true, data: data ?? null })
+      // Build response with Location header for clients that expect it
+      const res = NextResponse.json({ ok: true, data: data ?? null }, { status: 201 });
+      try {
+        if (data && data.id && typeof res.headers !== 'undefined' && res.headers.set) {
+          res.headers.set('Location', `/api/workout-sessions/${data.id}`);
+        }
+      } catch (e) {
+        // ignore header setting failures
+      }
+      return res;
     }
 
     if (action === 'update') {
       if (!payload.id) return NextResponse.json({ error: 'missing id' }, { status: 400 })
       const id = payload.id
-      delete payload.id
-      const { data, error } = await supabaseAdmin.from('workout_sessions').update(payload).eq('id', id).select().single()
+      const updatePayload: any = { ...payload };
+      delete updatePayload.id
+      // map exercises_list -> exercises when present
+      if (Array.isArray(updatePayload.exercises_list) && !Array.isArray(updatePayload.exercises)) {
+        updatePayload.exercises = updatePayload.exercises_list;
+      }
+      if (typeof updatePayload.exercises_list !== 'undefined') delete updatePayload.exercises_list;
+
+      const { data, error } = await supabaseAdmin.from('workout_sessions').update(updatePayload).eq('id', id).select().single()
         if (error) {
-          console.error('[workout-sessions][update] error for id', id, error)
-          return NextResponse.json({ ok: false, error: errorText(error) }, { status: 500 })
+          console.error('[workout-sessions][update] error for id', id, error, { payload })
+          return NextResponse.json({ ok: false, error: errorText(error), details: safeSerialize(error) }, { status: 500 })
         }
       return NextResponse.json({ ok: true, data: data ?? null })
     }
 
     // Complete with detailed exercises and sets
     if (action === 'complete_with_details') {
-      const { session_id, duration_minutes, notes, exercises } = payload || {}
+      // Accept either `exercises` or `exercises_list` from client
+      const { session_id, duration_minutes, notes } = payload || {}
+      let exercises = payload?.exercises;
+      if ((!Array.isArray(exercises) || exercises.length === 0) && Array.isArray(payload?.exercises_list)) {
+        exercises = payload.exercises_list;
+      }
       if (!session_id) return NextResponse.json({ error: 'missing session_id' }, { status: 400 })
 
       // Update session status/duration/notes first
@@ -113,8 +142,8 @@ export async function POST(req: Request) {
       // Fallback: do the update + inserts in JS (existing logic)
       const { data: updatedSession, error: updErr } = await supabaseAdmin.from('workout_sessions').update(updatePayload).eq('id', session_id).select().single()
       if (updErr) {
-        console.error('[workout-sessions][complete_with_details] failed update session', session_id, updErr)
-          return NextResponse.json({ ok: false, error: errorText(updErr) }, { status: 500 })
+        console.error('[workout-sessions][complete_with_details] failed update session', session_id, updErr, { payload })
+          return NextResponse.json({ ok: false, error: errorText(updErr), details: safeSerialize(updErr) }, { status: 500 })
       }
 
       // Insert session exercises (if provided)
@@ -135,20 +164,20 @@ export async function POST(req: Request) {
 
         const { data: ie, error: ieErr } = await supabaseAdmin.from('workout_session_exercises').insert(exercisesInsert).select()
         if (ieErr) {
-          console.error('[workout-sessions][complete_with_details] failed insert exercises', ieErr)
+          console.error('[workout-sessions][complete_with_details] failed insert exercises', ieErr, { exercises })
           // Fallback: persist full JSON into workout_sessions.exercises to avoid data loss
           try {
             const fallbackPayload: any = { exercises: exercises }
             const { data: fallbackData, error: fallbackErr } = await supabaseAdmin.from('workout_sessions').update(fallbackPayload).eq('id', session_id).select().single()
             if (fallbackErr) {
               console.error('[workout-sessions][complete_with_details] fallback update failed', fallbackErr)
-                return NextResponse.json({ ok: false, error: { original: errorText(ieErr), fallback_error: errorText(fallbackErr) } }, { status: 500 })
+                return NextResponse.json({ ok: false, error: { original: errorText(ieErr), fallback_error: errorText(fallbackErr) }, details: { original: safeSerialize(ieErr), fallback: safeSerialize(fallbackErr) } }, { status: 500 })
             }
             console.log('[workout-sessions][complete_with_details] fallback saved into workout_sessions.exercises')
             return NextResponse.json({ ok: true, data: { session: updatedSession, fallback_saved: true } })
           } catch (e) {
             console.error('[workout-sessions][complete_with_details] fallback unexpected error', e)
-              return NextResponse.json({ ok: false, error: errorText(ieErr) }, { status: 500 })
+              return NextResponse.json({ ok: false, error: errorText(ieErr), details: safeSerialize(ieErr) }, { status: 500 })
           }
         }
         insertedExercises = ie || []

@@ -7,6 +7,11 @@ import { dataService } from '@/lib/data';
 import Charts from '@/app/dashboard/client/Charts';
 import { useRequireCoach } from '@/lib/auth-context';
 
+// Safe JSON stringify helper used by multiple handlers to print diagnostics
+const safeStringify = (v: any) => {
+  try { return JSON.stringify(v, null, 2); } catch (e) { try { return String(v); } catch { return '<unserializable>'; } }
+};
+
 interface Client {
   id: string;
   name: string;
@@ -1011,9 +1016,10 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                             date: workout.date,
                             duration_minutes: workout.duration || 0,
                             program_name: workout.title && workout.title.trim() ? workout.title.trim() : (workout.program || ''),
-                            exercises_count: workout.exercises || 0,
+                            exercises_count: typeof workout.exercises === 'number' && workout.exercises > 0 ? workout.exercises : (Array.isArray(workout.exercises_list) ? workout.exercises_list.length : 0),
                             status: workout.status || 'completed',
-                            notes: workout.notes || ''
+                            notes: workout.notes || '',
+                            exercises: workout.exercises_list || []
                           };
 
                           const apiRes = await fetch('/api/workout-sessions', {
@@ -1021,34 +1027,76 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ action: 'create', payload })
                           });
-                          const json = await apiRes.json();
-                          if (apiRes.ok && json.data) {
-                            const created = json.data;
-                            const newSession = {
-                              id: created.id,
-                              date: created.date,
-                              program: created.program_name || created.program || payload.program_name,
-                              duration: created.duration_minutes || payload.duration_minutes || 0,
-                              exercises: created.exercises_count || payload.exercises_count || 0,
-                              notes: created.notes || payload.notes || '',
-                              status: created.status || payload.status || 'completed'
-                            };
-                            setWorkoutSessions(prev => [newSession, ...prev]);
+
+                          const rawText = await apiRes.text();
+                          let parsedBody: any = null;
+                          try { parsedBody = rawText ? JSON.parse(rawText) : null; } catch (parseErr) { parsedBody = null; }
+
+                          if (apiRes.ok) {
+                            if (parsedBody && parsedBody.data) {
+                              const created = parsedBody.data;
+                              const newSession = {
+                                id: created.id,
+                                date: created.date,
+                                program: created.program_name || created.program || payload.program_name,
+                                duration: created.duration_minutes || payload.duration_minutes || 0,
+                                exercises: created.exercises_count || payload.exercises_count || 0,
+                                notes: created.notes || payload.notes || '',
+                                status: created.status || payload.status || 'completed',
+                                exercises_list: payload.exercises_list || []
+                              };
+                              setWorkoutSessions(prev => [newSession, ...prev]);
+                            } else {
+                              // OK but empty body: attempt to derive id from Location header or fallback to payload
+                              let generatedId = `remote-unknown-${Date.now()}`;
+                              try {
+                                const location = apiRes.headers.get && apiRes.headers.get('location');
+                                if (location) {
+                                  const m = location.match(/([^/]+)\/?$/);
+                                  if (m && m[1]) generatedId = m[1];
+                                }
+                              } catch (hErr) { /* ignore */ }
+
+                              const newSession = {
+                                id: generatedId,
+                                date: payload.date || workout.date,
+                                program: payload.program_name || payload.program || workout.program || '',
+                                duration: payload.duration_minutes || payload.duration || workout.duration || 0,
+                                exercises: payload.exercises_count || (Array.isArray(payload.exercises_list) ? payload.exercises_list.length : (workout.exercises || 0)),
+                                notes: payload.notes || workout.notes || '',
+                                status: payload.status || workout.status || 'completed',
+                                exercises_list: payload.exercises_list || workout.exercises_list || []
+                              };
+                              console.info('API responded OK with empty body; using payload to populate session (no returned JSON).', { generatedId });
+                              setWorkoutSessions(prev => [newSession, ...prev]);
+                            }
                           } else {
-                            // fallback to local add
-                            console.error('API create workout failed', json);
+                            const headersObj: Record<string, string> = {};
+                            try {
+                              if (apiRes.headers && typeof apiRes.headers.forEach === 'function') {
+                                apiRes.headers.forEach((v, k) => { headersObj[k] = v; });
+                              } else if (apiRes.headers && typeof apiRes.headers.get === 'function') {
+                                const location = apiRes.headers.get('location');
+                                if (location) headersObj['location'] = location;
+                              }
+                            } catch (hErr) { }
+                            const diagnostics = { status: apiRes.status, statusText: apiRes.statusText, headers: headersObj, requestPayload: payload, rawText, parsedBody };
+                            console.error('API create workout failed', diagnostics);
+
                             const fallback = {
                               id: `local-${Date.now()}`,
                               date: workout.date,
                               program: workout.program,
                               title: workout.title,
                               duration: workout.duration || 0,
-                              exercises: workout.exercises || 0,
+                              exercises: workout.exercises || (Array.isArray(workout.exercises_list) ? workout.exercises_list.length : 0),
                               notes: workout.notes || '',
-                              status: workout.status || 'completed'
+                              status: workout.status || 'completed',
+                              exercises_list: workout.exercises_list || []
                             };
                             setWorkoutSessions(prev => [fallback, ...prev]);
-                            alert('Séance ajoutée localement, mais la sauvegarde sur le serveur a échoué.');
+                            const serverMessage = parsedBody && (parsedBody.error || parsedBody.message) ? (parsedBody.error || parsedBody.message) : null;
+                            alert(serverMessage ? `Séance ajoutée localement: ${serverMessage}` : 'Séance ajoutée localement, mais la sauvegarde sur le serveur a échoué.');
                           }
                         } catch (e) {
                           console.error('Failed to create workout via API', e);
@@ -3222,9 +3270,10 @@ interface WorkoutFormProps {
   onCancel: () => void;
   onSaved: (workout: any) => void;
   programs?: string[];
+  initialExercises?: any[];
 }
 
-function WorkoutForm({ clientId, onCancel, onSaved, programs }: WorkoutFormProps) {
+function WorkoutForm({ clientId, onCancel, onSaved, programs, initialExercises = [] }: WorkoutFormProps) {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   // if programs are passed, default to the first program
   const [program, setProgram] = useState<string>('');
@@ -3234,6 +3283,7 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs }: WorkoutFormProps
   const [status, setStatus] = useState<'completed' | 'missed'>('completed');
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [exercisesList, setExercisesList] = useState<any[]>(initialExercises || []);
 
   useEffect(() => {
     // If programs are provided and no program selected yet, default to first
@@ -3241,6 +3291,37 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs }: WorkoutFormProps
       setProgram(programs[0]);
     }
   }, [programs]);
+
+  useEffect(() => {
+    setExercisesList(initialExercises || []);
+  }, [initialExercises]);
+
+  // Editable helpers for exercisesList inside the form
+  const addEmptyExercise = () => {
+    setExercisesList(prev => [...prev, { id: `tmp-${Date.now()}`, exercise_id: null, exercise_name: 'Nouvel exercice', order_in_workout: prev.length + 1, sets: 3, reps: '12', weight: '', rest_time: 60, notes: '' }]);
+  };
+
+  const updateExerciseAt = (index: number, patch: Partial<any>) => {
+    setExercisesList(prev => prev.map((ex, i) => i === index ? { ...ex, ...patch } : ex));
+  };
+
+  const removeExerciseAt = (index: number) => {
+    setExercisesList(prev => {
+      const copy = prev.slice();
+      copy.splice(index, 1);
+      return copy.map((e, i) => ({ ...e, order_in_workout: i + 1 }));
+    });
+  };
+
+  const moveExerciseInList = (from: number, to: number) => {
+    setExercisesList(prev => {
+      if (from < 0 || to < 0 || from >= prev.length || to >= prev.length) return prev;
+      const copy = prev.slice();
+      const [item] = copy.splice(from, 1);
+      copy.splice(to, 0, item);
+      return copy.map((e, i) => ({ ...e, order_in_workout: i + 1 }));
+    });
+  };
 
   const handleSave = async () => {
     if (!program.trim() || !duration.trim() || !exercises.trim()) {
@@ -3255,9 +3336,10 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs }: WorkoutFormProps
         program: program.trim(),
         title: title.trim(),
         duration: parseInt(duration) || 0,
-        exercises: parseInt(exercises) || 0,
+        exercises: parseInt(exercises) || exercisesList.length || 0,
         status,
-        notes: notes.trim()
+        notes: notes.trim(),
+        exercises_list: exercisesList
       };
 
       // Ici on pourrait sauvegarder en base plus tard
@@ -3304,6 +3386,63 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs }: WorkoutFormProps
             <option value="missed">✗ Séance manquée</option>
           </select>
         </div>
+      </div>
+
+      {/* Editable exercises list UI */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="font-semibold">Exercices détectés / ajoutés</div>
+          <div className="flex items-center gap-2">
+            <button onClick={addEmptyExercise} type="button" className="px-2 py-1 bg-green-600 text-white rounded">+ Exo</button>
+          </div>
+        </div>
+
+        {exercisesList.length === 0 ? (
+          <div className="text-sm text-gray-500">Aucun exercice détecté</div>
+        ) : (
+          <div className="space-y-2">
+            {exercisesList.map((ex, idx) => (
+              <div key={ex.id || idx} className="p-3 bg-white dark:bg-gray-800 rounded border flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div className="flex-1 w-full md:w-auto">
+                  <div className="flex items-start md:items-center justify-between">
+                    <div className="min-w-0">
+                      <input value={ex.exercise_name || ''} onChange={(e) => updateExerciseAt(idx, { exercise_name: e.target.value })} className="font-semibold truncate text-sm w-full md:w-64 bg-transparent" />
+                      <div className="text-xs text-gray-500">ordre: {ex.order_in_workout ?? idx + 1}</div>
+                    </div>
+                    <div className="flex items-center space-x-2 text-sm text-gray-500 mt-2 md:mt-0">
+                      <button onClick={() => moveExerciseInList(idx, Math.max(0, idx - 1))} className="px-2 py-1 bg-gray-100 rounded hover:bg-gray-200">↑</button>
+                      <button onClick={() => moveExerciseInList(idx, Math.min(exercisesList.length - 1, idx + 1))} className="px-2 py-1 bg-gray-100 rounded hover:bg-gray-200">↓</button>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="text-xs text-gray-500">Sets</label>
+                      <input value={ex.sets ?? ''} onChange={(e) => updateExerciseAt(idx, { sets: parseInt(e.target.value) || 0 })} className="w-20 sm:w-16 px-2 py-1 border rounded bg-white dark:bg-gray-700 text-sm" />
+                      <label className="text-xs text-gray-500">Reps</label>
+                      <input value={ex.reps ?? ''} onChange={(e) => updateExerciseAt(idx, { reps: e.target.value })} className="w-24 sm:w-20 px-2 py-1 border rounded bg-white dark:bg-gray-700 text-sm" />
+                    </div>
+                    <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2">
+                      <label className="text-xs text-gray-500">Poids</label>
+                      <input value={ex.weight ?? ''} onChange={(e) => updateExerciseAt(idx, { weight: e.target.value })} className="w-24 sm:w-20 px-2 py-1 border rounded bg-white dark:bg-gray-700 text-sm" />
+                      <label className="text-xs text-gray-500">Repos</label>
+                      <input value={ex.rest_time ?? ''} onChange={(e) => updateExerciseAt(idx, { rest_time: parseInt(e.target.value) || 0 })} className="w-24 sm:w-20 px-2 py-1 border rounded bg-white dark:bg-gray-700 text-sm" />
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <label className="text-xs text-gray-500">Notes</label>
+                    <input value={ex.notes ?? ''} onChange={(e) => updateExerciseAt(idx, { notes: e.target.value })} className="w-full px-2 py-1 border rounded bg-white dark:bg-gray-700 text-sm" />
+                  </div>
+                </div>
+
+                <div className="flex-shrink-0 flex items-start md:items-center md:flex-col md:justify-center space-y-2 md:ml-4">
+                  <button onClick={() => removeExerciseAt(idx)} className="text-red-600 px-3 py-1 border border-red-200 rounded">Supprimer</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div>
