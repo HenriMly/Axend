@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useEffect, use } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { dataService } from '@/lib/data';
+import Charts from '@/app/dashboard/client/Charts';
 import { useRequireCoach } from '@/lib/auth-context';
 
 interface Client {
@@ -861,6 +862,30 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                   </div>
                 </div>
               <div className="p-6">
+                {/* Inject charts for quick visual summary */}
+                <div className="mb-6">
+                  {/* Charts component expects measurements and workout counts similar to client page */}
+                  {/* We'll compute minimal props from available client data/workoutSessions */}
+                  <Charts
+                    measurements={(client.measurements || []) as any}
+                    workoutsThisWeek={workoutSessions.filter(s => {
+                      const d = new Date(s.date);
+                      const now = new Date();
+                      const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
+                      startOfWeek.setHours(0,0,0,0);
+                      return d >= startOfWeek && d <= new Date();
+                    }).length}
+                    workoutsPlannedThisWeek={client.workouts ? client.workouts.filter((w:any) => {
+                      const d = new Date(w.date);
+                      const now = new Date();
+                      const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
+                      startOfWeek.setHours(0,0,0,0);
+                      const endOfWeek = new Date(startOfWeek);
+                      endOfWeek.setDate(startOfWeek.getDate() + 7);
+                      return d >= startOfWeek && d < endOfWeek;
+                    }).length : 0}
+                  />
+                </div>
                 {programDetails && programDetails.length > 0 ? (
                   <div>
                     <div className="mb-4 flex items-center justify-between">

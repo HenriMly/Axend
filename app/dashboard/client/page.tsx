@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState, useEffect, useMemo } from "react";
+import Charts from './Charts';
 import { useRouter } from "next/navigation";
 import { useRequireClient } from '@/lib/auth-context';
 import { dataService } from '@/lib/data';
@@ -122,6 +123,49 @@ export default function ClientDashboard() {
     return workouts.filter(workout => {
       const workoutDate = new Date(workout.date);
       return workoutDate >= startOfWeek;
+    }).length;
+  }, [workouts]);
+
+  // Helpers for measurements UI
+  const formatWeekday = (d: string) => {
+    try {
+      return new Date(d).toLocaleDateString('fr-FR', { weekday: 'long' });
+    } catch { return ''; }
+  };
+
+  const timeAgo = (d: string) => {
+    const then = new Date(d).getTime();
+    const now = Date.now();
+    const diff = Math.floor((now - then) / 1000);
+    if (diff < 60) return `${diff}s`;
+    if (diff < 3600) return `${Math.floor(diff/60)}m`;
+    if (diff < 86400) return `${Math.floor(diff/3600)}h`;
+    if (diff < 604800) return `${Math.floor(diff/86400)}j`;
+    return `${Math.floor(diff/604800)} sem`;
+  };
+
+  const deleteMeasurement = async (id: string) => {
+    if (!confirm('Supprimer cette mesure ?')) return;
+    try {
+      const res = await fetch(`/api/measurements/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Delete failed');
+      setMeasurements(prev => prev.filter(m => m.id !== id));
+    } catch (e) {
+      console.error('Failed to delete measurement', e);
+      alert('Erreur lors de la suppression');
+    }
+  };
+
+  // estimate planned workouts for the week as workouts with date within same week
+  const plannedWorkoutsThisWeek = useMemo(() => {
+    const now = new Date();
+    const startOfWeek = new Date(now.setDate(now.getDate() - now.getDay()));
+    startOfWeek.setHours(0,0,0,0);
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 7);
+    return workouts.filter(w => {
+      const d = new Date(w.date);
+      return d >= startOfWeek && d < endOfWeek;
     }).length;
   }, [workouts]);
 
@@ -1136,6 +1180,7 @@ export default function ClientDashboard() {
                 />
               </div>
             ) : (
+              <>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 {/* Évolution du poids */}
                 <div className="group relative bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl p-8 border border-white/20 dark:border-gray-700/30 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all duration-500 hover:shadow-2xl hover:shadow-blue-500/20 hover:-translate-y-2">
@@ -1152,16 +1197,57 @@ export default function ClientDashboard() {
                       </h3>
                     </div>
                     <div className="space-y-4">
-                      {measurements.slice(0, 5).map((measurement) => (
-                        <div key={measurement.id} className="flex justify-between items-center p-4 bg-gray-50/50 dark:bg-gray-800/30 rounded-2xl backdrop-blur-sm">
-                          <span className="text-gray-600 dark:text-gray-400 font-medium">
-                            {new Date(measurement.date).toLocaleDateString('fr-FR')}
-                          </span>
-                          <span className="font-bold text-xl text-gray-900 dark:text-white">
-                            {measurement.weight}kg
-                          </span>
-                        </div>
-                      ))}
+                      {measurements.slice(0, 5).map((measurement, idx) => {
+                        const next = measurements[idx + 1];
+                        const delta = next ? (measurement.weight - next.weight) : null;
+                        return (
+                          <div key={measurement.id} className="flex items-center p-4 bg-gray-50/50 dark:bg-gray-800/30 rounded-2xl backdrop-blur-sm">
+                            <div className="flex items-center w-full gap-4">
+                              {/* Date block */}
+                              <div className="w-28 text-center">
+                                <div className="text-xs text-gray-500 dark:text-gray-400 font-medium">{formatWeekday(measurement.date)}</div>
+                                <div className="text-lg font-bold text-gray-900 dark:text-white">{new Date(measurement.date).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })}</div>
+                                <div className="text-xs text-gray-400 dark:text-gray-500">{timeAgo(measurement.date)}</div>
+                              </div>
+
+                              {/* Main metrics */}
+                              <div className="flex-1">
+                                <div className="flex items-center justify-between">
+                                  <div>
+                                    <div className="text-2xl font-bold text-gray-900 dark:text-white">{measurement.weight}kg</div>
+                                    <div className="text-sm text-gray-600 dark:text-gray-400">Poids</div>
+                                  </div>
+
+                                  <div className={`flex items-center text-sm font-semibold ${delta !== null ? (delta > 0 ? 'text-red-600' : delta < 0 ? 'text-emerald-600' : 'text-gray-600') : 'text-gray-600'}`}>
+                                    {delta !== null ? (
+                                      <>
+                                        <span className="mr-2 text-xl">{delta > 0 ? '↗' : delta < 0 ? '↘' : '→'}</span>
+                                        <span>{Math.abs(delta).toFixed(1)}kg</span>
+                                      </>
+                                    ) : (
+                                      <span>N/A</span>
+                                    )}
+                                  </div>
+                                </div>
+
+                                <div className="mt-2 text-sm text-gray-600 dark:text-gray-400 flex gap-6">
+                                  <div>💧 Masse grasse: <span className="font-semibold text-gray-900 dark:text-white">{measurement.body_fat ?? '—'}%</span></div>
+                                  <div>💪 Masse musculaire: <span className="font-semibold text-gray-900 dark:text-white">{measurement.muscle_mass ?? '—'}%</span></div>
+                                </div>
+                              </div>
+
+                              {/* Actions */}
+                              <div className="flex-shrink-0">
+                                <button onClick={() => deleteMeasurement(measurement.id)} className="p-2 rounded-lg hover:bg-red-100 dark:hover:bg-red-900 transition-colors">
+                                  <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M1 7h22M10 3h4a1 1 0 011 1v1H9V4a1 1 0 011-1z" />
+                                  </svg>
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -1202,6 +1288,12 @@ export default function ClientDashboard() {
                   </div>
                 </div>
               </div>
+
+              {/* Charts supplémentaires (poids & séances) */}
+              <div className="mt-6">
+                <Charts measurements={measurements} workoutsThisWeek={completedWorkouts} workoutsPlannedThisWeek={plannedWorkoutsThisWeek} />
+              </div>
+              </>
             )}
           </div>
         )}

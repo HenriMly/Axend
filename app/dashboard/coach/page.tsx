@@ -1,6 +1,9 @@
 'use client';
 
 import Link from "next/link";
+import CoachCharts from './CoachCharts';
+import CoachExtraCharts from './CoachExtraCharts';
+import MiniDonut from '@/components/ui/MiniDonut';
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useRequireCoach } from "@/lib/auth-context";
@@ -30,6 +33,7 @@ interface Coach {
 export default function CoachDashboard() {
   const { user, userProfile, loading, isCoach, signOut } = useRequireCoach();
   const [coach, setCoach] = useState<Coach | null>(null);
+  const [clientQuery, setClientQuery] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -272,6 +276,10 @@ export default function CoachDashboard() {
           </div>
         </div>
 
+  {/* Charts section for coach */}
+  <CoachCharts clients={coach.clients} />
+  <CoachExtraCharts clients={coach.clients} />
+
         {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
           <button className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all group text-left">
@@ -347,23 +355,39 @@ export default function CoachDashboard() {
           <div className="p-6 border-b border-gray-200 dark:border-gray-700">
             <div className="flex justify-between items-center">
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Mes Clients</h2>
-              <div className="flex space-x-2">
-                <button className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
-                  Tous
-                </button>
-                <button className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                  Actifs
-                </button>
-                <button className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">
-                  Inactifs
-                </button>
+              <div className="flex items-center space-x-3">
+                <div className="relative">
+                  <input
+                    aria-label="Rechercher des clients"
+                    placeholder="Rechercher par nom ou email..."
+                    value={clientQuery}
+                    onChange={(e) => setClientQuery(e.target.value)}
+                    className="pl-10 pr-4 py-2 w-64 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                  <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-4.35-4.35M17 11a6 6 0 11-12 0 6 6 0 0112 0z" />
+                    </svg>
+                  </div>
+                </div>
+                <div className="flex space-x-2">
+                  <button className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Tous</button>
+                  <button className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 dark:bg-blue-900/20 rounded-lg">Actifs</button>
+                  <button className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Inactifs</button>
+                </div>
               </div>
             </div>
           </div>
 
           <div className="p-6">
             <div className="grid gap-4">
-              {coach.clients.map((client) => (
+              {coach.clients
+                .filter(c => {
+                  if (!clientQuery) return true;
+                  const q = clientQuery.trim().toLowerCase();
+                  return (c.name && c.name.toLowerCase().includes(q)) || (c.email && c.email.toLowerCase().includes(q));
+                })
+                .map((client) => (
                 <Link
                   key={client.id}
                   href={`/dashboard/coach/client/${client.id}`}
@@ -401,19 +425,28 @@ export default function CoachDashboard() {
                           </span>
                         ))}
                       </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
-                        {client.current_weight || 'N/A'}kg → {client.target_weight || 'N/A'}kg
-                      </div>
-                      <div className="flex items-center mt-1">
-                        <div className="w-16 bg-gray-200 dark:bg-gray-700 rounded-full h-2 mr-2">
-                          <div 
-                            className="bg-gradient-to-r from-green-500 to-blue-500 h-2 rounded-full" 
-                            style={{
-                              width: `${client.current_weight && client.target_weight ? Math.min(100, Math.abs((client.current_weight - client.target_weight) / client.target_weight) * 100) : 0}%`
-                            }}
-                          ></div>
+                      <div className="flex items-center space-x-4">
+                        <div>
+                          <div className="text-sm text-gray-600 dark:text-gray-400">
+                            {client.current_weight || 'N/A'}kg → {client.target_weight || 'N/A'}kg
+                          </div>
                         </div>
-                        <span className="text-xs text-gray-500 dark:text-gray-400">Progression</span>
+                        <div>
+                          {/* Mini donut progress */}
+                          {client.current_weight && client.target_weight ? (
+                            (() => {
+                              const diff = client.target_weight - client.current_weight;
+                              const total = Math.abs(client.target_weight) || 1;
+                              // If target is higher than current, percent done = current/target*100
+                              const percent = client.target_weight > client.current_weight
+                                ? (client.current_weight / client.target_weight) * 100
+                                : ((client.current_weight - client.target_weight) / total) * 100;
+                              return <MiniDonut percent={Math.min(100, Math.max(0, percent))} />;
+                            })()
+                          ) : (
+                            <MiniDonut percent={0} />
+                          )}
+                        </div>
                       </div>
                     </div>
                     
