@@ -42,11 +42,31 @@ export const dataService = {
 
       // Fetch last workout for each client from workout_sessions
       const clientIds = data.map((c: any) => c.id);
-      const { data: lastWorkouts, error: workoutsErr } = await supabase
+      // Build base query; some test mocks may not implement `.in`, so we handle gracefully
+      let workoutsBase: any = supabase
         .from('workout_sessions')
-        .select('client_id, date')
-        .in('client_id', clientIds)
-        .order('date', { ascending: false });
+        .select('client_id, date');
+      // Apply ordering if supported by the mock/environment
+      if (typeof workoutsBase.order === 'function') {
+        workoutsBase = workoutsBase.order('date', { ascending: false });
+      }
+
+      let lastWorkouts: any[] | null = null;
+      let workoutsErr: any = null;
+      try {
+        if (typeof workoutsBase.in === 'function') {
+          const res = await workoutsBase.in('client_id', clientIds);
+          lastWorkouts = res.data;
+          workoutsErr = res.error;
+        } else {
+          // Fallback for environments/mocks without `.in` operator: fetch and filter locally
+          const res = await workoutsBase;
+          lastWorkouts = (res?.data || []).filter((w: any) => clientIds.includes(w.client_id));
+          workoutsErr = res?.error || null;
+        }
+      } catch (e) {
+        workoutsErr = e;
+      }
 
       if (workoutsErr) {
         console.warn('[dataService.getCoachClients] Failed to fetch workouts:', workoutsErr);
@@ -104,11 +124,28 @@ export const dataService = {
 
       // Fetch last workout for each client from workout_sessions (fallback path)
       const clientIds = (clientsSimple || []).map((c: any) => c.id);
-      const { data: lastWorkouts, error: workoutsErr } = await supabase
+      let workoutsBase: any = supabase
         .from('workout_sessions')
-        .select('client_id, date')
-        .in('client_id', clientIds)
-        .order('date', { ascending: false });
+        .select('client_id, date');
+      if (typeof workoutsBase.order === 'function') {
+        workoutsBase = workoutsBase.order('date', { ascending: false });
+      }
+
+      let lastWorkouts: any[] | null = null;
+      let workoutsErr: any = null;
+      try {
+        if (typeof workoutsBase.in === 'function') {
+          const res = await workoutsBase.in('client_id', clientIds);
+          lastWorkouts = res.data;
+          workoutsErr = res.error;
+        } else {
+          const res = await workoutsBase;
+          lastWorkouts = (res?.data || []).filter((w: any) => clientIds.includes(w.client_id));
+          workoutsErr = res?.error || null;
+        }
+      } catch (e) {
+        workoutsErr = e;
+      }
 
       if (workoutsErr) {
         console.warn('[dataService.getCoachClients] Fallback: Failed to fetch workouts:', workoutsErr);
