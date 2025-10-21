@@ -3,23 +3,30 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
-if (!supabaseUrl) {
-  throw new Error(
-    'Missing NEXT_PUBLIC_SUPABASE_URL environment variable. ' +
-    'Please check your .env.local file and make sure it contains your Supabase project URL. ' +
-    'You can find it in your Supabase dashboard > Settings > API.'
-  )
+// During build time, env vars might not be available - only validate at runtime
+if (typeof window !== 'undefined' || process.env.NODE_ENV === 'production') {
+  if (!supabaseUrl) {
+    throw new Error(
+      'Missing NEXT_PUBLIC_SUPABASE_URL environment variable. ' +
+      'Please check your .env.local file and make sure it contains your Supabase project URL. ' +
+      'You can find it in your Supabase dashboard > Settings > API.'
+    )
+  }
+
+  if (!supabaseAnonKey) {
+    throw new Error(
+      'Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable. ' +
+      'Please check your .env.local file and make sure it contains your Supabase anon key. ' +
+      'You can find it in your Supabase dashboard > Settings > API.'
+    )
+  }
 }
 
-if (!supabaseAnonKey) {
-  throw new Error(
-    'Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable. ' +
-    'Please check your .env.local file and make sure it contains your Supabase anon key. ' +
-    'You can find it in your Supabase dashboard > Settings > API.'
-  )
-}
-
-export const supabase = createClient(supabaseUrl, supabaseAnonKey)
+// Use fallback values during build time
+export const supabase = createClient(
+  supabaseUrl || 'https://placeholder.supabase.co',
+  supabaseAnonKey || 'placeholder-key'
+)
 
 // Types pour TypeScript
 export interface Database {
