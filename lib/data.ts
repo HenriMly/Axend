@@ -40,12 +40,32 @@ export const dataService = {
 
       if (error) throw error
 
+      // Fetch last workout for each client from workout_sessions
+      const clientIds = data.map((c: any) => c.id);
+      const { data: lastWorkouts, error: workoutsErr } = await supabase
+        .from('workout_sessions')
+        .select('client_id, date')
+        .in('client_id', clientIds)
+        .order('date', { ascending: false });
+
+      if (workoutsErr) {
+        console.warn('[dataService.getCoachClients] Failed to fetch workouts:', workoutsErr);
+      }
+
+      // Map last workout date per client
+      const lastWorkoutMap: Record<string, string> = {};
+      (lastWorkouts || []).forEach((w: any) => {
+        if (!lastWorkoutMap[w.client_id]) {
+          lastWorkoutMap[w.client_id] = w.date;
+        }
+      });
+
       // Process data to add last workout and current programs
       const processedClients = data.map(client => ({
         ...client,
-        lastWorkout: null, // À corriger plus tard quand la relation workouts sera créée
+        lastWorkout: lastWorkoutMap[client.id] || null,
         programs: client.programs?.map((p: any) => p.name) || ['Programme personnalisé'],
-        workoutCount: 0 // À corriger plus tard
+        workoutCount: lastWorkouts?.filter((w: any) => w.client_id === client.id).length || 0
       }));
       
       console.log('[dataService.getCoachClients] Complex select success, returning:', processedClients);
@@ -82,11 +102,31 @@ export const dataService = {
         programMap[p.client_id].push(p.name)
       })
 
+      // Fetch last workout for each client from workout_sessions (fallback path)
+      const clientIds = (clientsSimple || []).map((c: any) => c.id);
+      const { data: lastWorkouts, error: workoutsErr } = await supabase
+        .from('workout_sessions')
+        .select('client_id, date')
+        .in('client_id', clientIds)
+        .order('date', { ascending: false });
+
+      if (workoutsErr) {
+        console.warn('[dataService.getCoachClients] Fallback: Failed to fetch workouts:', workoutsErr);
+      }
+
+      // Map last workout date per client
+      const lastWorkoutMap: Record<string, string> = {};
+      (lastWorkouts || []).forEach((w: any) => {
+        if (!lastWorkoutMap[w.client_id]) {
+          lastWorkoutMap[w.client_id] = w.date;
+        }
+      });
+
       return (clientsSimple || []).map(client => ({
         ...client,
-        lastWorkout: null, // À corriger plus tard quand la relation workouts sera créée
+        lastWorkout: lastWorkoutMap[client.id] || null,
         programs: programMap[client.id] || ['Programme personnalisé'],
-        workoutCount: 0 // À corriger plus tard
+        workoutCount: lastWorkouts?.filter((w: any) => w.client_id === client.id).length || 0
       }))
     }
   },

@@ -33,6 +33,7 @@ export default function CoachDashboard() {
   const { user, userProfile, loading, isCoach, signOut } = useRequireCoach();
   const [coach, setCoach] = useState<Coach | null>(null);
   const [clientQuery, setClientQuery] = useState<string>('');
+  const [clientFilter, setClientFilter] = useState<'all' | 'active' | 'inactive'>('active');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Pour stocker le détail de la séance du jour pour chaque client
@@ -263,12 +264,12 @@ export default function CoachDashboard() {
               <div className="text-4xl font-bold bg-gradient-to-r from-emerald-600 to-teal-600 dark:from-emerald-400 dark:to-teal-400 bg-clip-text text-transparent mb-2">
                 {coach.clients.filter(client => {
                   const lastWorkout = client.lastWorkout ? new Date(client.lastWorkout) : null;
-                  const oneWeekAgo = new Date();
-                  oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-                  return lastWorkout ? lastWorkout >= oneWeekAgo : false;
+                  const oneMonthAgo = new Date();
+                  oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+                  return lastWorkout ? lastWorkout >= oneMonthAgo : false;
                 }).length}
               </div>
-              <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">Cette semaine</div>
+              <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">Ce mois-ci</div>
             </div>
           </div>
 
@@ -457,9 +458,36 @@ export default function CoachDashboard() {
                   </div>
                 </div>
                 <div className="flex space-x-2">
-                  <button className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Tous</button>
-                  <button className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 dark:bg-blue-900/20 rounded-lg">Actifs</button>
-                  <button className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white">Inactifs</button>
+                  <button 
+                    onClick={() => setClientFilter('all')}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      clientFilter === 'all' 
+                        ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' 
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Tous
+                  </button>
+                  <button 
+                    onClick={() => setClientFilter('active')}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      clientFilter === 'active' 
+                        ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' 
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Actifs
+                  </button>
+                  <button 
+                    onClick={() => setClientFilter('inactive')}
+                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      clientFilter === 'inactive' 
+                        ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' 
+                        : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                    }`}
+                  >
+                    Inactifs
+                  </button>
                 </div>
               </div>
             </div>
@@ -469,9 +497,28 @@ export default function CoachDashboard() {
             <div className="grid gap-4">
               {coach.clients
                 .filter(c => {
-                  if (!clientQuery) return true;
-                  const q = clientQuery.trim().toLowerCase();
-                  return (c.name && c.name.toLowerCase().includes(q)) || (c.email && c.email.toLowerCase().includes(q));
+                  // Filtre par recherche
+                  if (clientQuery) {
+                    const q = clientQuery.trim().toLowerCase();
+                    if (!(c.name && c.name.toLowerCase().includes(q)) && !(c.email && c.email.toLowerCase().includes(q))) {
+                      return false;
+                    }
+                  }
+                  
+                  // Filtre par statut (actif/inactif) - basé sur 1 mois
+                  if (clientFilter === 'active') {
+                    const lastWorkout = c.lastWorkout ? new Date(c.lastWorkout) : null;
+                    const oneMonthAgo = new Date();
+                    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+                    return lastWorkout ? lastWorkout >= oneMonthAgo : false;
+                  } else if (clientFilter === 'inactive') {
+                    const lastWorkout = c.lastWorkout ? new Date(c.lastWorkout) : null;
+                    const oneMonthAgo = new Date();
+                    oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+                    return !lastWorkout || lastWorkout < oneMonthAgo;
+                  }
+                  
+                  return true; // 'all'
                 })
                 .map((client) => (
                 <Link
