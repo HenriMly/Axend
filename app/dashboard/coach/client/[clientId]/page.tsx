@@ -3088,57 +3088,7 @@ function ProgramForm({ initial, clientId, coachId, onCancel, onSaved }: ProgramF
       image_url: imageUrl
     });
 
-    // If editing an existing program with an ID, persist via /api/exercises
-    if (initial && initial.id) {
-      try {
-        const payload: any = {
-          program_id: initial.id,
-          coach_id: coachId,
-          name: exercise.name || exercise.exercise || exercise.title,
-          description: exercise.instructions || '',
-          image_url: imageUrl || null,
-          // if we have a selected workout, include the workout_id so server can create the join row
-          workout_id: currentWorkout?.id || null,
-          exercise_external_id: exercise.id || null
-        };
-
-        // Log payload for debugging
-        console.debug('[addExternalExerciseToWorkout] Persist payload:', payload);
-        const res = await fetch('/api/exercises', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'create', payload }) });
-        const text = await res.text();
-        let jsonBody: any = null;
-        try { jsonBody = text ? JSON.parse(text) : null; } catch (e) { /* not json */ }
-
-        // Collect some useful response diagnostics
-        const contentType = res.headers.get('content-type');
-        const diagnostics = {
-          status: res.status,
-          statusText: res.statusText,
-          contentType,
-          rawText: text,
-          parsedBody: jsonBody
-        };
-
-        if (!res.ok) {
-          // Prefer explicit error string when available
-          if (diagnostics.parsedBody && diagnostics.parsedBody.error) {
-            console.error('[Persist exercise failed] parsed error:', diagnostics.parsedBody.error);
-            alert('Erreur persistance exercice: ' + diagnostics.parsedBody.error);
-          } else if (diagnostics.rawText) {
-            console.error('[Persist exercise failed] raw response:', diagnostics.rawText);
-            alert('Erreur persistance exercice: ' + diagnostics.rawText);
-          } else {
-            // Fallback: stringify the diagnostics object to avoid collapsed empty object display
-            console.error('[Persist exercise failed] diagnostics:', JSON.stringify(diagnostics, null, 2));
-            alert('Erreur persistance exercice: statut ' + diagnostics.status + ' ' + diagnostics.statusText);
-          }
-        } else {
-          console.debug('Persist exercise succeeded', diagnostics);
-        }
-      } catch (e) {
-        console.error('Persist external exercise error', e);
-      }
-    }
+    // Suppression totale de l'appel à /api/exercises : persistance uniquement dans workout_session_exercises ou local
   };
 
   if (step === 3 && currentDay && currentWorkout) {
