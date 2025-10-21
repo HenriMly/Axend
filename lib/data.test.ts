@@ -7,8 +7,9 @@ jest.mock('./supabase', () => {
         select: jest.fn(() => ({
           eq: jest.fn(() => ({
             order: jest.fn(() => ({ data: [], error: null })),
-            single: jest.fn(() => ({ data: {}, error: null }))
-          })
+            single: jest.fn(() => ({ data: {}, error: null })),
+            limit: jest.fn(() => ({ data: [], error: null }))
+          }))
         }))
       }))
     }
