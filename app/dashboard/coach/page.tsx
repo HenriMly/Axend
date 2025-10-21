@@ -29,35 +29,77 @@ interface Coach {
   coach_code: string;
   clients: Client[];
 }
-
 export default function CoachDashboard() {
   const { user, userProfile, loading, isCoach, signOut } = useRequireCoach();
   const [coach, setCoach] = useState<Coach | null>(null);
   const [clientQuery, setClientQuery] = useState<string>('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Pour stocker le détail de la séance du jour pour chaque client
+  const [clientDayDetails, setClientDayDetails] = useState<Record<string, {
+    programName: string;
+    dayName: string;
+    exercises: { name: string }[];
+  } | null>>({});
   const router = useRouter();
 
   useEffect(() => {
     if (loading) return;
 
     if (!loading && userProfile && isCoach) {
-      // Get clients data
-      console.log('[CoachDashboard] Starting to fetch clients for coach:', userProfile.id);
       setIsLoading(true);
       setError(null);
       dataService.getCoachClients(userProfile.id)
-        .then(clients => {
-          console.log('[CoachDashboard] Successfully fetched clients:', clients);
+        .then(async (clients) => {
           const coachData = {
             ...userProfile,
             clients: clients
           };
           setCoach(coachData as Coach);
+
+          const today = new Date();
+          const todayDayOfWeek = today.getDay(); // 0 (dimanche) à 6 (samedi)
+          const clientDetails: Record<string, { programName: string; dayName: string; exercises: { name: string }[] } | null> = {};
+          for (const client of clients) {
+            let found = false;
+            try {
+              const today = new Date();
+              const todayStr = today.toISOString().split('T')[0];
+              const todayWorkoutData = await dataService.getTodayWorkout(client.id);
+              let exercises: { name: string }[] = [];
+              let programName = '';
+              let dayName = '';
+              if (todayWorkoutData && todayWorkoutData.length > 0) {
+                const prog = todayWorkoutData[0];
+                const day = prog.program_days && prog.program_days[0];
+                if (day && day.workouts && day.workouts.length > 0) {
+                  exercises = day.workouts.flatMap((w: any) =>
+                    (w.workout_exercises || []).map((ex: any) => ({ name: ex.exercise_name }))
+                  );
+                }
+                programName = prog.name;
+                dayName = day ? day.day_name : '';
+              }
+              // Vérifie si la séance a été réalisée aujourd'hui (dans la vue)
+              const isCompleted = await dataService.isSessionCompletedForDate(client.id, todayStr);
+              if (programName || isCompleted) {
+                clientDetails[client.id] = {
+                  programName,
+                  dayName,
+                  exercises
+                };
+                // Ajoute une propriété pour l'état de réalisation
+                (clientDetails[client.id] as any).isCompleted = isCompleted;
+                found = true;
+              }
+            } catch (e) {
+              console.error('[COACH DEBUG] Error for clientId:', client.id, e);
+            }
+            if (!found) clientDetails[client.id] = null;
+          }
+          setClientDayDetails(clientDetails);
         })
         .catch((err: any) => {
-          console.error('Error fetching coach clients:', err);
-          console.error('Error details:', err?.message, err?.code, err?.details);
           setError(err?.message || String(err));
         })
         .finally(() => setIsLoading(false));
@@ -327,27 +369,71 @@ export default function CoachDashboard() {
 
         {/* Action rapide - Séances du jour */}
         <div className="mb-8">
-          <Link href="/dashboard/coach/today-workouts" className="block">
-            <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-4">
-                  <div className="text-4xl">📅</div>
-                  <div>
-                    <h3 className="text-xl font-bold mb-1">Séances du jour</h3>
-                    <p className="text-orange-100 text-sm">
-                      Suivez les entraînements de vos clients en temps réel
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="bg-white/20 rounded-lg px-4 py-2 inline-flex items-center space-x-2">
-                    <span className="text-sm font-medium">Voir le suivi</span>
-                    <span>→</span>
-                  </div>
-                </div>
+          <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200">
+            <div className="flex items-center space-x-4 mb-4">
+              <div className="text-4xl">📅</div>
+              <div>
+                <h3 className="text-xl font-bold mb-1">Séances du jour</h3>
+                <p className="text-orange-100 text-sm">
+                  Suivez les entraînements de vos clients en temps réel
+                </p>
               </div>
             </div>
-          </Link>
+            <div className="space-y-3">
+              {coach.clients.map((client) => {
+                const dayDetail = clientDayDetails[client.id];
+                return (
+                  <div key={client.id} className="bg-white/20 rounded-xl p-4 flex flex-col md:flex-row md:items-center md:justify-between">
+                    <div className="flex items-center space-x-3">
+                      <div className="w-10 h-10 bg-gradient-to-r from-blue-400 to-purple-500 rounded-full flex items-center justify-center">
+                        <span className="text-white font-semibold text-lg">{client.name.charAt(0).toUpperCase()}</span>
+                      </div>
+                      <div>
+                        <div className="font-semibold text-white">{client.name}</div>
+                        <div className="text-xs text-orange-100">{client.email}</div>
+                      </div>
+                    </div>
+                    <div className="mt-2 md:mt-0 text-sm text-orange-50 w-full md:w-auto">
+                      {dayDetail ? (
+                        <div>
+                          <span className="font-semibold">Séance prévue aujourd'hui</span>
+                          <div className="text-xs mt-1">Programme : <span className="font-bold">{dayDetail.programName}</span></div>
+                          <div className="text-xs">Jour : <span className="font-bold">{dayDetail.dayName}</span></div>
+                          {dayDetail.exercises.length > 0 ? (
+                            <ul className="mt-1 ml-2 list-disc text-xs">
+                              {dayDetail.exercises.map((ex, idx) => (
+                                <li key={idx}>{ex.name}</li>
+                              ))}
+                            </ul>
+                          ) : (
+                            <div className="text-xs italic">Aucun exercice prévu</div>
+                          )}
+                          {/* Affichage de l'état de la séance */}
+                          <div className="mt-2">
+                            {dayDetail && (dayDetail as any).isCompleted ? (
+                              <div className="flex items-center gap-2 mt-2">
+                                <span className="px-2 py-1 bg-green-600 text-white rounded-full text-xs font-semibold">Séance réalisée</span>
+                                <button
+                                  className="ml-2 px-3 py-1 bg-white/80 text-green-700 rounded shadow hover:bg-green-100 text-xs font-semibold"
+                                  onClick={() => router.push(`/dashboard/coach/client/${client.id}?show=lastworkout`)}
+                                >
+                                  Voir les résultats
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="px-2 py-1 bg-orange-400 text-white rounded-full text-xs font-semibold">Non réalisée</span>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <span>Aucune séance aujourd'hui</span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
 
         {/* Clients List */}

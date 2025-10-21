@@ -1,3 +1,13 @@
+
+jest.mock('@/lib/supabaseAdmin', () => ({
+  __esModule: true,
+  default: {
+    from: () => ({
+      insert: () => ({ select: () => ({ single: async () => ({ data: {}, error: null }) }) })
+    })
+  }
+}));
+
 import { POST } from './route';
 
 describe('workout-session-exercises API', () => {

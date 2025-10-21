@@ -1,6 +1,22 @@
 import { supabase } from './supabase'
 
 export const dataService = {
+  // Check if a workout session is completed for a client and date (using v_workout_sessions_with_exercises)
+  async isSessionCompletedForDate(clientId: string, date: string) {
+    // Query the view for a session for this client and date
+    const { data, error } = await supabase
+      .from('v_workout_sessions_with_exercises')
+      .select('id')
+      .eq('client_id', clientId)
+      .eq('date', date)
+      .limit(1);
+
+    if (error) {
+      console.error('[dataService.isSessionCompletedForDate] Error:', error);
+      throw error;
+    }
+    return !!(data && data.length > 0);
+  },
   // ===== COACH SERVICES =====
   
   // Get all clients for a coach

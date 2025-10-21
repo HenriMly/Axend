@@ -6,6 +6,7 @@ import Charts from './Charts';
 import { useRouter } from "next/navigation";
 import { useRequireClient } from '@/lib/auth-context';
 import { dataService } from '@/lib/data';
+import { supabase } from '@/lib/supabase';
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
 // Safe JSON stringify helper used by multiple handlers to print diagnostics
@@ -377,6 +378,16 @@ interface Measurement {
 }
 
 export default function ClientDashboard() {
+  // ...existing code...
+  // --- Séance du jour state ---
+  const [isStartingTodayWorkout, setIsStartingTodayWorkout] = useState(false);
+
+  // ...existing state declarations...
+
+  // (workouts state is already declared later)
+
+  // --- Séance du jour logic (must come after workouts is declared) ---
+  // (moved below workouts declaration)
   const [activeTab, setActiveTab] = useState('overview');
   const router = useRouter();
   const { user, userProfile, loading, isClient, signOut } = useRequireClient();
@@ -384,6 +395,160 @@ export default function ClientDashboard() {
   const [clientData, setClientData] = useState<ClientData | null>(null);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [workouts, setWorkouts] = useState<Workout[]>([]);
+
+  // --- Séance du jour logic (must come after workouts is declared) ---
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+  const [plannedTodayWorkout, setPlannedTodayWorkout] = useState<any>(null);
+  // Correction : toujours prioriser la séance réalisée aujourd'hui si elle existe
+  // Correction ultime : on vérifie la BDD (workout_sessions) pour voir si une séance du jour est bien terminée
+  const [dbSessionCompletedToday, setDbSessionCompletedToday] = useState(false);
+  useEffect(() => {
+    const checkDbSession = async () => {
+      if (!userProfile?.id) return;
+      const clientId = clientData?.id || userProfile.id;
+      try {
+        // On va chercher les séances du jour dans la vue v_workout_sessions_with_exercises (status 'completed')
+        const { data: sessions, error } = await supabase
+          .from('v_workout_sessions_with_exercises')
+          .select('*')
+          .eq('client_id', clientId)
+          .gte('date', todayStr + 'T00:00:00')
+          .lte('date', todayStr + 'T23:59:59')
+          .eq('status', 'completed');
+        console.log('[DEBUG] checkDbSession clientId:', clientId, 'todayStr:', todayStr, 'sessions:', sessions, 'error:', error);
+        setDbSessionCompletedToday(Array.isArray(sessions) && sessions.length > 0);
+      } catch (e) {
+        console.error('[DEBUG] checkDbSession error', e);
+        setDbSessionCompletedToday(false);
+      }
+    };
+    checkDbSession();
+  }, [userProfile?.id, clientData, todayStr]);
+
+  const todayWorkout = useMemo(() => {
+    if (dbSessionCompletedToday) {
+      // On force l'affichage de la séance comme terminée
+      if (plannedTodayWorkout) return { ...plannedTodayWorkout, status: 'completed' };
+      if (workouts && workouts.length > 0) {
+        let found = (workouts as any[]).find((w) => w.date && w.date.startsWith(todayStr));
+        if (found) return { ...found, status: 'completed' };
+      }
+      return { status: 'completed', name: 'Séance du jour' };
+    }
+    if (workouts && workouts.length > 0) {
+      let found = (workouts as any[]).find((w) => w.date && w.date.startsWith(todayStr) && w.status === 'completed');
+      if (found) return found;
+      found = (workouts as any[]).find((w) => w.date && w.date.startsWith(todayStr));
+      if (found) return found;
+    }
+    return plannedTodayWorkout;
+  }, [dbSessionCompletedToday, workouts, plannedTodayWorkout, todayStr]);
+
+  useEffect(() => {
+    // Si aucune séance réalisée aujourd'hui, on va chercher la séance planifiée
+    const fetchPlanned = async () => {
+      if (!userProfile?.id) return;
+      // On prend l'id réel du client (table clients)
+      let clientId = userProfile.id;
+      if (clientData && clientData.id) clientId = clientData.id;
+      // Si aucune séance réalisée aujourd'hui, on va chercher la séance planifiée
+      const alreadyDone = (workouts || []).some((w: any) => w.date && w.date.startsWith(todayStr));
+      if (!alreadyDone) {
+        try {
+          const res = await dataService.getTodayWorkout(clientId);
+          // res est un tableau de programmes, on prend le premier jour/first workout du jour
+          if (Array.isArray(res) && res.length > 0) {
+            const prog = res[0];
+            if (prog.program_days && prog.program_days.length > 0) {
+              const day = prog.program_days[0];
+              if (day.workouts && day.workouts.length > 0) {
+                setPlannedTodayWorkout({
+                  ...day.workouts[0],
+                  program_id: prog.id,
+                  program_name: prog.name,
+                  day_of_week: day.day_of_week,
+                  day_name: day.day_name
+                });
+                return;
+              }
+            }
+          }
+          setPlannedTodayWorkout(null);
+        } catch (e) {
+          setPlannedTodayWorkout(null);
+        }
+      } else {
+        setPlannedTodayWorkout(null);
+      }
+    };
+    fetchPlanned();
+  }, [userProfile?.id, clientData, workouts, todayStr]);
+
+  const startTodayWorkout = async () => {
+    if (!todayWorkout || !userProfile?.id) {
+      alert('Impossible de démarrer la séance: données manquantes');
+      return;
+    }
+    setIsStartingTodayWorkout(true);
+    try {
+      // Trouver le programme du jour si besoin
+      let program = null;
+      if (todayWorkout.program_id && Array.isArray(programs)) {
+        program = programs.find((p) => p.id === todayWorkout.program_id);
+      }
+      // Préparer les exercices
+      let workoutExercises = [];
+      if (todayWorkout.workout_exercises && Array.isArray(todayWorkout.workout_exercises) && todayWorkout.workout_exercises.length > 0) {
+        workoutExercises = todayWorkout.workout_exercises;
+      } else if (todayWorkout.exercises && Array.isArray(todayWorkout.exercises) && todayWorkout.exercises.length > 0) {
+        workoutExercises = todayWorkout.exercises;
+      } else if (program && Array.isArray(program.exercises) && program.exercises.length > 0) {
+        workoutExercises = program.exercises;
+      }
+
+      // Synthétiser un payload runner compatible
+      const syntheticWorkout = { ...todayWorkout, workout_exercises: workoutExercises };
+      const programPayload = program
+        ? { ...program, program_days: [{ id: `pd-${program.id}`, day_of_week: today.getDay() || 7, day_name: 'Séance', is_rest_day: false, workouts: [syntheticWorkout] }] }
+        : { id: todayWorkout.id, name: todayWorkout.name, program_days: [{ id: `pd-${todayWorkout.id}`, day_of_week: today.getDay() || 7, day_name: 'Séance', is_rest_day: false, workouts: [syntheticWorkout] }] };
+
+      // Créer la session côté serveur
+      const sessionPayload = {
+        client_id: userProfile.id,
+        program_id: program ? program.id : todayWorkout.program_id,
+        program_name: program ? program.name : todayWorkout.name,
+        date: todayWorkout.date || new Date().toISOString(),
+        status: 'in_progress',
+        exercises_count: workoutExercises.length
+      };
+      const res = await fetch('/api/workout-sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'create', payload: sessionPayload })
+      });
+      let createdSession = null;
+      try {
+        const body = await res.json();
+        createdSession = body?.data || null;
+      } catch (e) {
+        console.warn('Could not parse /api/workout-sessions response', e);
+      }
+      // Préparer runnerData
+      const runnerData = {
+        session: createdSession,
+        program: programPayload
+      };
+      const encoded = encodeURIComponent(JSON.stringify(runnerData));
+      setShowProgramModal(false);
+      router.push(`/dashboard/client/workout?data=${encoded}`);
+    } catch (err) {
+      console.error('Failed to start today workout', err);
+      alert('Erreur lors du démarrage de la séance. Vérifiez la console.');
+    } finally {
+      setIsStartingTodayWorkout(false);
+    }
+  };
   const [measurements, setMeasurements] = useState<Measurement[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
   const [dataLoaded, setDataLoaded] = useState(false);
@@ -1037,28 +1202,96 @@ export default function ClientDashboard() {
               </p>
               
               {/* Action rapide - Séance du jour */}
-              <div className="max-w-md mx-auto">
-                <Link href="/dashboard/client/workout-today" className="block">
-                  <div className="bg-gradient-to-r from-orange-500 to-red-600 rounded-2xl p-6 text-white shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200">
-                    <div className="flex items-center justify-center mb-3">
-                      <div className="text-4xl">🔥</div>
-                    </div>
-                    <h3 className="text-xl font-bold mb-2">Séance du jour</h3>
-                    <p className="text-orange-100 text-sm">
-                      {new Date().toLocaleDateString('fr-FR', { 
-                        weekday: 'long', 
-                        day: 'numeric', 
-                        month: 'long' 
-                      })}
-                    </p>
-                    <div className="mt-4">
-                      <div className="bg-white/20 rounded-lg px-4 py-2 inline-flex items-center space-x-2">
-                        <span className="text-sm font-medium">Commencer maintenant</span>
-                        <span>→</span>
-                      </div>
-                    </div>
+              <div className="max-w-lg mx-auto">
+                {/* Bloc Séance du jour moderne */}
+                <div className="bg-gradient-to-br from-orange-500/90 to-pink-500/90 dark:from-orange-700/80 dark:to-pink-700/80 rounded-3xl shadow-2xl shadow-orange-500/20 p-8 text-white relative overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-br from-orange-400/20 via-pink-400/10 to-transparent pointer-events-none rounded-3xl"></div>
+                  <div className="relative z-10">
+                    {todayWorkout ? (
+                      <>
+                        {todayWorkout.status === 'completed' ? (
+                          <div className="flex flex-col items-center gap-3">
+                            <div className="text-4xl mb-2">🎉</div>
+                            <div className="text-xl font-bold mb-1">Félicitations !</div>
+                            <div className="text-orange-100 text-base mb-2">Vous avez terminé votre séance du jour.</div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col items-center gap-2">
+                            <div className="flex items-center gap-3 mb-2">
+                              <span className="text-3xl">💪</span>
+                              <span className="text-lg font-bold">
+                                {(() => {
+                                  const d = todayWorkout.date ? new Date(todayWorkout.date) : new Date();
+                                  return d.toLocaleDateString('fr-FR', { weekday: 'long' });
+                                })()}
+                              </span>
+                            </div>
+                            <div className="text-2xl font-bold mb-1">{todayWorkout.name || 'Séance'}</div>
+                            <div className="flex items-center gap-2 text-orange-100 text-sm mb-2">
+                              <span className="text-lg">🕐</span>
+                              <span>
+                                {(() => {
+                                  if (todayWorkout.time_of_day) return todayWorkout.time_of_day;
+                                  if (todayWorkout.date) {
+                                    const hour = new Date(todayWorkout.date).getHours();
+                                    if (hour < 12) return 'Matin';
+                                    if (hour < 18) return 'Après-midi';
+                                    return 'Soir';
+                                  }
+                                  return 'Matin';
+                                })()}
+                              </span>
+                              <span className="text-lg">⏱️</span>
+                              <span>{todayWorkout.estimated_duration || 60} min</span>
+                            </div>
+                            <div className="text-sm text-orange-100 mb-2">
+                              {(() => {
+                                let arr = [];
+                                if (todayWorkout.workout_exercises && Array.isArray(todayWorkout.workout_exercises) && todayWorkout.workout_exercises.length > 0) {
+                                  arr = todayWorkout.workout_exercises;
+                                } else if (todayWorkout.exercises && Array.isArray(todayWorkout.exercises) && todayWorkout.exercises.length > 0) {
+                                  arr = todayWorkout.exercises;
+                                } else if (todayWorkout.exercises_externes && Array.isArray(todayWorkout.exercises_externes) && todayWorkout.exercises_externes.length > 0) {
+                                  arr = todayWorkout.exercises_externes;
+                                } else if (todayWorkout.program_id && Array.isArray(programs)) {
+                                  const prog = programs.find((p) => p.id === todayWorkout.program_id);
+                                  if (prog && Array.isArray(prog.exercises)) {
+                                    arr = prog.exercises;
+                                  }
+                                }
+                                return arr.length + ' exercice(s)';
+                              })()}
+                            </div>
+                            <button
+                              onClick={startTodayWorkout}
+                              className="w-full group relative px-6 py-4 bg-gradient-to-r from-orange-600 to-pink-600 text-white rounded-2xl font-semibold shadow-2xl shadow-orange-500/25 hover:shadow-orange-500/40 hover:scale-105 transition-all duration-300 overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
+                              disabled={isStartingTodayWorkout || (() => {
+                                let arr = [];
+                                if (todayWorkout.workout_exercises && Array.isArray(todayWorkout.workout_exercises) && todayWorkout.workout_exercises.length > 0) {
+                                  arr = todayWorkout.workout_exercises;
+                                } else if (todayWorkout.exercises && Array.isArray(todayWorkout.exercises) && todayWorkout.exercises.length > 0) {
+                                  arr = todayWorkout.exercises;
+                                } else if (todayWorkout.exercises_externes && Array.isArray(todayWorkout.exercises_externes) && todayWorkout.exercises_externes.length > 0) {
+                                  arr = todayWorkout.exercises_externes;
+                                } else if (todayWorkout.program_id && Array.isArray(programs)) {
+                                  const prog = programs.find((p) => p.id === todayWorkout.program_id);
+                                  if (prog && Array.isArray(prog.exercises)) {
+                                    arr = prog.exercises;
+                                  }
+                                }
+                                return arr.length === 0;
+                              })()}
+                            >
+                              {isStartingTodayWorkout ? 'Démarrage...' : 'Commencer la séance'}
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <div className="mt-4 text-orange-100 text-sm">Aucune séance prévue aujourd'hui</div>
+                    )}
                   </div>
-                </Link>
+                </div>
               </div>
             </div>
 
