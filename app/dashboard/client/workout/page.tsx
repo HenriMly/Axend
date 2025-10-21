@@ -1,7 +1,7 @@
 'use client';
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
 
@@ -26,7 +26,8 @@ interface WorkoutExercise extends Exercise {
   completedSets: WorkoutSet[];
 }
 
-export default function ActiveWorkout() {
+// Composant qui utilise useSearchParams - doit être enveloppé dans Suspense
+function ActiveWorkoutContent() {
   const [workout, setWorkout] = useState<WorkoutExercise[] | null>(null);
   const [currentExerciseIndex, setCurrentExerciseIndex] = useState(0);
   const [currentSetIndex, setCurrentSetIndex] = useState(0);
@@ -610,5 +611,21 @@ function SetInput({
         {isLastSet ? 'Terminer la série' : 'Série terminée'}
       </button>
     </div>
+  );
+}
+
+// Export par défaut avec Suspense wrapper
+export default function ActiveWorkout() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-white dark:from-gray-900 dark:to-gray-800">
+        <div className="flex items-center space-x-3">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+          <span className="text-lg font-medium text-gray-700 dark:text-gray-300">Chargement...</span>
+        </div>
+      </div>
+    }>
+      <ActiveWorkoutContent />
+    </Suspense>
   );
 }
