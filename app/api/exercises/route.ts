@@ -1,8 +1,15 @@
 import supabaseAdmin from '@/lib/supabaseAdmin';
 import { NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
 
 export async function POST(req: Request) {
   try {
+    // Require sentinel cookie set by middleware for authenticated requests
+    const cookieStore = await cookies();
+    const sentinel = cookieStore.get('axend_sess');
+    if (!sentinel) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     const body = await req.json();
     const { action, payload } = body;
 
@@ -110,6 +117,11 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+    const cookieStore = await cookies();
+    const sentinel = cookieStore.get('axend_sess');
+    if (!sentinel) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
     const body = await req.json();
     const { id, coach_id } = body;
     if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { cookies } from 'next/headers'
 import supabaseAdmin from '@/lib/supabaseAdmin'
 
 function serializeError(err: any) {
@@ -46,7 +47,13 @@ function errorText(obj: any) {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json()
+  const body = await req.json()
+  // Require sentinel cookie set by middleware for authenticated requests
+  const cookieStore = await cookies()
+  const sentinel = cookieStore.get('axend_sess')
+    if (!sentinel) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    }
     // body: { action: 'create'|'update', payload: {...} }
     const { action, payload } = body
 
@@ -256,6 +263,11 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
+  const cookieStore = await cookies()
+  const sentinel = cookieStore.get('axend_sess')
+    if (!sentinel) {
+      return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    }
     const body = await req.json();
     const { id } = body;
     if (!id) return NextResponse.json({ error: 'missing id' }, { status: 400 });
