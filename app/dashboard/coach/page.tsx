@@ -36,6 +36,7 @@ export default function CoachDashboard() {
   const [clientFilter, setClientFilter] = useState<'all' | 'active' | 'inactive'>('active');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
   // Pour stocker le détail de la séance du jour pour chaque client
   const [clientDayDetails, setClientDayDetails] = useState<Record<string, {
     programName: string;
@@ -43,6 +44,11 @@ export default function CoachDashboard() {
     exercises: { name: string }[];
   } | null>>({});
   const router = useRouter();
+
+  // Assurer que le composant est monté côté client
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -108,6 +114,7 @@ export default function CoachDashboard() {
   }, [user, userProfile, loading, isCoach]);
 
   const handleLogout = async () => {
+    console.log('[CoachDashboard] Logout button clicked');
     try {
       await signOut();
     } catch (error) {
@@ -115,7 +122,8 @@ export default function CoachDashboard() {
     }
   };
 
-  if (isLoading) {
+  // Attendre que le composant soit monté côté client
+  if (!mounted || isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gradient-to-br from-blue-50 to-white dark:from-gray-900 dark:to-gray-800">
         <div className="flex items-center space-x-3">
@@ -137,7 +145,7 @@ export default function CoachDashboard() {
             <p className="text-sm text-gray-600 mb-4">Aucun client trouvé ou chargement interrompu.</p>
           )}
           <div className="flex justify-center gap-4">
-            <button onClick={() => {
+            <button type="button" onClick={() => {
               setIsLoading(true);
               setError(null);
               dataService.getCoachClients(userProfile!.id)
@@ -145,7 +153,7 @@ export default function CoachDashboard() {
                 .catch((e:any) => setError(e?.message || String(e)))
                 .finally(() => setIsLoading(false));
             }} className="px-4 py-2 bg-blue-600 text-white rounded">Réessayer</button>
-            <button onClick={() => router.push('/')} className="px-4 py-2 bg-gray-200 rounded">Accueil</button>
+            <button type="button" onClick={() => router.push('/')} className="px-4 py-2 bg-gray-200 rounded">Accueil</button>
           </div>
         </div>
       </div>
@@ -155,68 +163,71 @@ export default function CoachDashboard() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 dark:from-gray-900 dark:via-slate-900 dark:to-gray-800">
       {/* Header moderne */}
-      <header className="relative w-full px-6 py-6 bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl border-b border-white/20 dark:border-gray-700/50 shadow-lg shadow-blue-500/5">
+      <header className="relative w-full px-4 sm:px-6 py-4 sm:py-6 bg-white/70 dark:bg-gray-900/70 backdrop-blur-xl border-b border-white/20 dark:border-gray-700/50 shadow-lg shadow-blue-500/5">
         <div className="absolute inset-0 bg-gradient-to-r from-blue-600/5 via-purple-600/5 to-pink-600/5"></div>
-        <div className="relative max-w-7xl mx-auto flex justify-between items-center">
-          <div className="flex items-center space-x-6">
-            <Link href="/" className="group flex items-center space-x-4 px-4 py-2 rounded-2xl bg-gradient-to-r from-white/50 to-gray-50/50 dark:from-gray-800/50 dark:to-gray-700/50 hover:from-white dark:hover:from-gray-700 transition-all duration-200 hover:shadow-lg">
-              <div className="w-12 h-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/25 group-hover:scale-110 transition-transform duration-200">
-                <span className="text-white font-bold text-xl">A</span>
-              </div>
-              <div>
-                <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                  Axend Coach
-                </h1>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Professional Edition</p>
-              </div>
-            </Link>
-          </div>
-          
-          <div className="flex gap-6 items-center">
-            {/* Notifications */}
-            <div className="flex space-x-3">
-              <button className="relative p-3 rounded-xl bg-gray-100/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-700 transition-all duration-200 hover:shadow-lg">
-                <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5 5v-5z" />
-                </svg>
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
-              </button>
-              
-              <Link href="/dashboard/coach/settings" className="p-3 rounded-xl bg-gray-100/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-700 transition-all duration-200 hover:shadow-lg">
-                <svg className="w-5 h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
+        <div className="relative max-w-7xl mx-auto">
+          <div className="flex flex-col space-y-4 lg:flex-row lg:justify-between lg:items-center lg:space-y-0">
+            <div className="flex items-center space-x-4 sm:space-x-6">
+              <Link href="/" className="group flex items-center space-x-3 sm:space-x-4 px-3 sm:px-4 py-2 rounded-2xl bg-gradient-to-r from-white/50 to-gray-50/50 dark:from-gray-800/50 dark:to-gray-700/50 hover:from-white dark:hover:from-gray-700 transition-all duration-200 hover:shadow-lg">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl flex items-center justify-center shadow-lg shadow-blue-500/25 group-hover:scale-110 transition-transform duration-200">
+                  <span className="text-white font-bold text-lg sm:text-xl">A</span>
+                </div>
+                <div>
+                  <h1 className="text-lg sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+                    Axend Coach
+                  </h1>
+                  <p className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400">Professional Edition</p>
+                </div>
               </Link>
             </div>
             
-            {/* Profil coach */}
-            <div className="flex items-center space-x-4 px-6 py-3 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl rounded-2xl border border-white/20 dark:border-gray-700/30 shadow-lg">
-              <div className="w-12 h-12 bg-gradient-to-r from-emerald-400 via-cyan-500 to-blue-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/25">
-                <span className="text-white font-bold text-lg">
-                  {coach.name.charAt(0).toUpperCase()}
-                </span>
+            <div className="flex flex-wrap gap-3 sm:gap-6 items-center">
+              {/* Notifications */}
+              <div className="flex space-x-2 sm:space-x-3">
+                <button type="button" className="relative p-2 sm:p-3 rounded-xl bg-gray-100/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-700 transition-all duration-200 hover:shadow-lg">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-5 5v-5z" />
+                  </svg>
+                  <div className="absolute -top-1 -right-1 w-2.5 h-2.5 sm:w-3 sm:h-3 bg-red-500 rounded-full animate-pulse"></div>
+                </button>
+                
+                <Link href="/dashboard/coach/settings" className="p-2 sm:p-3 rounded-xl bg-gray-100/80 dark:bg-gray-800/80 hover:bg-white dark:hover:bg-gray-700 transition-all duration-200 hover:shadow-lg">
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600 dark:text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                </Link>
               </div>
-              <div>
-                <div className="font-semibold text-gray-900 dark:text-white">
-                  {coach.name}
+              
+              {/* Profil coach */}
+              <div className="flex items-center space-x-2 sm:space-x-4 px-3 sm:px-6 py-2 sm:py-3 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl rounded-2xl border border-white/20 dark:border-gray-700/30 shadow-lg">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-emerald-400 via-cyan-500 to-blue-500 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-500/25">
+                  <span className="text-white font-bold text-sm sm:text-lg">
+                    {coach.name.charAt(0).toUpperCase()}
+                  </span>
                 </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center space-x-2">
-                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                  <span>Coach • Code: {coach.coach_code}</span>
+                <div className="hidden sm:block">
+                  <div className="font-semibold text-sm sm:text-base text-gray-900 dark:text-white">
+                    {coach.name}
+                  </div>
+                  <div className="text-[10px] sm:text-xs text-gray-500 dark:text-gray-400 flex items-center space-x-2">
+                    <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
+                    <span>Coach • {coach.coach_code}</span>
+                  </div>
                 </div>
               </div>
+              
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="px-4 sm:px-6 py-2 sm:py-3 text-xs sm:text-sm bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white font-semibold rounded-2xl transition-all duration-200 hover:shadow-lg hover:shadow-red-500/25 hover:scale-105"
+              >
+                <svg className="w-4 h-4 sm:w-5 sm:h-5 inline mr-1 sm:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+                <span className="hidden sm:inline">Déconnexion</span>
+              </button>
             </div>
-            
-            <button
-              onClick={handleLogout}
-              className="px-6 py-3 bg-gradient-to-r from-red-500 to-pink-600 hover:from-red-600 hover:to-pink-700 text-white font-semibold rounded-2xl transition-all duration-200 hover:shadow-lg hover:shadow-red-500/25 hover:scale-105"
-            >
-              <svg className="w-5 h-5 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              Déconnexion
-            </button>
           </div>
         </div>
       </header>
@@ -325,7 +336,7 @@ export default function CoachDashboard() {
 
         {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <button className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all group text-left">
+          <button type="button" className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all group text-left">
             <div className="flex items-center space-x-4">
               <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -339,7 +350,7 @@ export default function CoachDashboard() {
             </div>
           </button>
 
-          <button className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all group text-left">
+          <button type="button" className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all group text-left">
             <div className="flex items-center space-x-4">
               <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -353,7 +364,7 @@ export default function CoachDashboard() {
             </div>
           </button>
 
-          <button className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all group text-left">
+          <button type="button" className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6 border border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all group text-left">
             <div className="flex items-center space-x-4">
               <div className="w-12 h-12 bg-gradient-to-r from-green-500 to-teal-500 rounded-lg flex items-center justify-center group-hover:scale-110 transition-transform">
                 <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -439,17 +450,17 @@ export default function CoachDashboard() {
 
         {/* Clients List */}
         <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700">
-          <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-            <div className="flex justify-between items-center">
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Mes Clients</h2>
-              <div className="flex items-center space-x-3">
-                <div className="relative">
+          <div className="p-4 sm:p-6 border-b border-gray-200 dark:border-gray-700">
+            <div className="flex flex-col space-y-4 lg:flex-row lg:justify-between lg:items-center lg:space-y-0">
+              <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">Mes Clients</h2>
+              <div className="flex flex-col space-y-3 sm:flex-row sm:items-center sm:space-y-0 sm:space-x-3">
+                <div className="relative w-full sm:w-auto">
                   <input
                     aria-label="Rechercher des clients"
-                    placeholder="Rechercher par nom ou email..."
+                    placeholder="Rechercher..."
                     value={clientQuery}
                     onChange={(e) => setClientQuery(e.target.value)}
-                    className="pl-10 pr-4 py-2 w-64 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    className="pl-10 pr-4 py-2 w-full sm:w-48 lg:w-64 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-sm placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400"
                   />
                   <div className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -459,8 +470,9 @@ export default function CoachDashboard() {
                 </div>
                 <div className="flex space-x-2">
                   <button 
+                    type="button"
                     onClick={() => setClientFilter('all')}
-                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors ${
                       clientFilter === 'all' 
                         ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' 
                         : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
@@ -469,8 +481,9 @@ export default function CoachDashboard() {
                     Tous
                   </button>
                   <button 
+                    type="button"
                     onClick={() => setClientFilter('active')}
-                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors ${
                       clientFilter === 'active' 
                         ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' 
                         : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
@@ -479,8 +492,9 @@ export default function CoachDashboard() {
                     Actifs
                   </button>
                   <button 
+                    type="button"
                     onClick={() => setClientFilter('inactive')}
-                    className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    className={`flex-1 sm:flex-none px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium rounded-lg transition-colors ${
                       clientFilter === 'inactive' 
                         ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' 
                         : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
