@@ -9,7 +9,7 @@ export async function getSupabaseServer() {
   const isProd = process.env.NODE_ENV === 'production'
 
   const baseOpts: CookieOptions = {
-    httpOnly: true,
+    httpOnly: false, // Allow client-side access for session restoration
     secure: isProd,
     sameSite: 'strict',
     path: '/',

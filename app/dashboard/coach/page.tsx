@@ -117,6 +117,7 @@ export default function CoachDashboard() {
     console.log('[CoachDashboard] Logout button clicked');
     try {
       await signOut();
+      console.log('[CoachDashboard] Sign out completed');
     } catch (error) {
       console.error('Error signing out:', error);
     }

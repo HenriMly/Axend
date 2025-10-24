@@ -16,7 +16,7 @@ if (typeof window !== 'undefined' || process.env.NODE_ENV === 'production') {
   if (!supabaseAnonKey) {
     throw new Error(
       'Missing NEXT_PUBLIC_SUPABASE_ANON_KEY environment variable. ' +
-      'Please check your .env.local file and make sure it contains your Supabase anon key. ' +
+      'Please check your .env.local file and make sure it contains your Supabase project URL. ' +
       'You can find it in your Supabase dashboard > Settings > API.'
     )
   }
@@ -25,8 +25,50 @@ if (typeof window !== 'undefined' || process.env.NODE_ENV === 'production') {
 // Use fallback values during build time
 export const supabase = createClient(
   supabaseUrl || 'https://placeholder.supabase.co',
-  supabaseAnonKey || 'placeholder-key'
+  supabaseAnonKey || 'placeholder-key',
+  {
+    auth: {
+      flowType: 'pkce',
+      autoRefreshToken: true,
+      persistSession: true,
+      detectSessionInUrl: true,
+      storage: {
+        getItem: (key: string) => {
+          if (typeof window === 'undefined') return null
+          try {
+            const cookies = document.cookie.split(';')
+            const cookie = cookies.find(c => c.trim().startsWith(`${key}=`))
+            return cookie ? decodeURIComponent(cookie.split('=')[1]) : null
+          } catch {
+            return null
+          }
+        },
+        setItem: (key: string, value: string) => {
+          if (typeof window === 'undefined') return
+          const isProd = process.env.NODE_ENV === 'production'
+          document.cookie = `${key}=${encodeURIComponent(value)}; path=/; max-age=31536000; samesite=strict; ${isProd ? 'secure;' : ''}`
+        },
+        removeItem: (key: string) => {
+          if (typeof window === 'undefined') return
+          document.cookie = `${key}=; path=/; max-age=0;`
+        },
+      },
+    },
+  }
 )
+
+// Helper to get session from cookies (for SSR)
+export async function getSessionFromCookies() {
+  if (typeof window === 'undefined') return null
+
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    return session
+  } catch (error) {
+    console.error('[getSessionFromCookies] Error:', error)
+    return null
+  }
+}
 
 // Types pour TypeScript
 export interface Database {

@@ -38,9 +38,9 @@ export async function middleware(req: NextRequest) {
       const incoming = req.cookies.getAll()
       const supaCookies = incoming.filter(c => c.name.startsWith('sb-') || c.name.startsWith('sb:'))
       for (const c of supaCookies) {
-        // keep value, override attributes
+        // keep value, override attributes - remove httpOnly so client can read them
         res.cookies.set(c.name, c.value, {
-          httpOnly: true,
+          httpOnly: false, // Allow client-side access for session restoration
           secure: isProd,
           sameSite: 'strict',
           path: '/',

@@ -40,20 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const clearSession = async () => {
-    console.log('[auth-context] Clearing session due to token error');
-    try {
-      await supabase.auth.signOut();
-      
-      // Nettoyer complètement le localStorage Supabase
-      const keys = Object.keys(localStorage);
-      keys.forEach(key => {
-        if (key.startsWith('sb-') || key.includes('supabase')) {
-          localStorage.removeItem(key);
-        }
-      });
-    } catch (e) {
-      console.warn('[auth-context] Error during signOut:', e);
-    }
+    console.log('[auth-context] Clearing session');
     setUser(null);
     setUserProfile(null);
     setLoading(false);
@@ -89,10 +76,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // ignore: URL may not contain auth params
       }
 
-      // Récupérer la session initiale
+      // Récupérer la session initiale - utiliser une approche plus robuste
       try {
+        console.log('[auth-context] Initializing session...');
+
+        // Attendre un peu pour que les cookies soient disponibles
+        await new Promise(resolve => setTimeout(resolve, 100));
+
         const { data: { session }, error } = await supabase.auth.getSession();
-        
+
+        console.log('[auth-context] Session result:', {
+          hasSession: !!session,
+          hasError: !!error,
+          errorMessage: error?.message
+        });
+
         // Si erreur de refresh token, nettoyer la session
         if (error && (error.message?.includes('refresh') || error.message?.includes('token'))) {
           console.warn('[auth-context] Invalid refresh token, clearing session:', error.message);
@@ -104,22 +102,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
         if (session?.user) {
           const sessUser = session.user
+          console.log('[auth-context] User found, fetching profile for:', sessUser.id);
           let profile = await fetchUserProfile(sessUser.id);
 
           if (!profile && sessUser) {
+            console.log('[auth-context] Profile missing, ensuring client profile...');
             try {
               await authService.ensureClientProfile(sessUser)
               profile = await fetchUserProfile(sessUser.id)
+              console.log('[auth-context] Client profile ensured:', !!profile);
             } catch (e) {
               console.warn('[auth-context] ensureClientProfile failed:', e)
             }
           }
 
+          console.log('[auth-context] Setting user profile:', profile?.role);
           setUserProfile(profile);
+        } else {
+          console.log('[auth-context] No session user, clearing profile');
+          setUserProfile(null);
         }
       } catch (err: any) {
         console.error('[auth-context] getSession failed:', err);
-        
+
         // Si c'est une erreur de refresh token, nettoyer la session
         if (err?.message?.includes('refresh') || err?.message?.includes('token')) {
           console.warn('[auth-context] Refresh token error, signing out');
@@ -239,7 +244,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       await supabase.auth.signOut();
-      
+
       // Nettoyer complètement le localStorage Supabase
       const keys = Object.keys(localStorage);
       keys.forEach(key => {
@@ -247,10 +252,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           localStorage.removeItem(key);
         }
       });
+
+      // Nettoyer les cookies Supabase côté client
+      if (typeof window !== 'undefined') {
+        const cookies = document.cookie.split(';');
+        cookies.forEach(cookie => {
+          const [name] = cookie.trim().split('=');
+          if (name.startsWith('sb-') || name.startsWith('sb:')) {
+            document.cookie = `${name}=; path=/; max-age=0;`;
+          }
+        });
+        // Nettoyer aussi le cookie sentinelle
+        document.cookie = 'axend_sess=; path=/; max-age=0;';
+      }
+
+      // Faire une requête au serveur pour déclencher le middleware et nettoyer côté serveur
+      try {
+        await fetch('/api/debug-cookies', { method: 'GET' });
+      } catch (e) {
+        // Ignore les erreurs de fetch, c'est juste pour déclencher le middleware
+      }
     } catch (error) {
       console.warn('[auth-context.signOut] Error during signOut:', error);
     }
-    
+
     setUser(null);
     setUserProfile(null);
     router.push('/');
