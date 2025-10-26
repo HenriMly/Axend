@@ -41,6 +41,23 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs, initialExercises =
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
 
+  // Calcul automatique de la durée et du nombre d'exercices
+  useEffect(() => {
+    // Nombre d'exercices = longueur de la liste exercisesList
+    setExercises(exercisesList.length.toString());
+
+    // Durée estimée = somme pour chaque exercice de (séries × (répétitions × 5 secondes + temps de repos)) / 60
+    let totalSeconds = 0;
+    exercisesList.forEach(ex => {
+      const sets = ex.sets || 0;
+      const reps = parseInt(ex.reps) || 0; // Parse le premier nombre si c'est une plage comme "8-12"
+      const rest = ex.rest_time || 60;
+      totalSeconds += sets * (reps * 5 + rest);
+    });
+    const estimatedMinutes = Math.round(totalSeconds / 60);
+    setDuration(estimatedMinutes.toString());
+  }, [exercisesList]);
+
   useEffect(() => {
     if (programs && programs.length > 0 && !program) {
       setProgram(programs[0]);
