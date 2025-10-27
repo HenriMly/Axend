@@ -60,19 +60,50 @@ export async function POST(req: Request) {
     if (action === 'create') {
       // Normalize payload to DB column names: map exercises_list -> exercises (jsonb)
       const insertPayload: any = { ...payload };
+      let exercisesToInsert: any[] = [];
       if (Array.isArray(insertPayload.exercises_list) && !Array.isArray(insertPayload.exercises)) {
         insertPayload.exercises = insertPayload.exercises_list;
+        exercisesToInsert = insertPayload.exercises_list;
+      } else if (Array.isArray(insertPayload.exercises)) {
+        exercisesToInsert = insertPayload.exercises;
       }
       // Remove client-only fields that don't exist in the DB schema
       if (typeof insertPayload.exercises_list !== 'undefined') delete insertPayload.exercises_list;
 
       const { data, error } = await supabaseAdmin.from('workout_sessions').insert(insertPayload).select().single()
-        if (error) {
-          console.error('[workout-sessions][create] error:', error, { payload })
-          return NextResponse.json({ ok: false, error: errorText(error), details: safeSerialize(error) }, { status: 500 })
+      if (error) {
+        console.error('[workout-sessions][create] error:', error, { payload })
+        return NextResponse.json({ ok: false, error: errorText(error), details: safeSerialize(error) }, { status: 500 })
+      }
+
+      // Insérer UNIQUEMENT dans workout_session_exercises pour les séances réelles
+      let insertedExercises: any[] = [];
+      if (data && data.id && Array.isArray(exercisesToInsert) && exercisesToInsert.length > 0) {
+        console.log('[workout-sessions][create] Payload exercices reçu:', JSON.stringify(exercisesToInsert, null, 2));
+        const exercisesInsert = exercisesToInsert.map((ex: any, idx: number) => ({
+          workout_session_id: data.id,
+          exercise_id: ex.exercise_id || null,
+          exercise_name: ex.exercise_name || ex.name || null,
+          order: typeof ex.order_in_workout !== 'undefined' ? ex.order_in_workout : (typeof ex.order !== 'undefined' ? ex.order : idx + 1),
+          sets: typeof ex.sets !== 'undefined' ? ex.sets : 3,
+          reps: ex.reps || '12',
+          weight: ex.weight !== '' && ex.weight !== null && typeof ex.weight !== 'undefined' ? Number(ex.weight) : null,
+          rest_seconds: typeof ex.rest_time !== 'undefined' ? ex.rest_time : (typeof ex.rest_seconds !== 'undefined' ? ex.rest_seconds : 60),
+          notes: ex.notes || null,
+          workout_exercise_id: ex.workout_exercise_id || null
+        }));
+        console.log('[workout-sessions][create] Mapping exercices à insérer:', JSON.stringify(exercisesInsert, null, 2));
+        const { data: ie, error: ieErr } = await supabaseAdmin.from('workout_session_exercises').insert(exercisesInsert).select();
+        console.log('[workout-sessions][create] Résultat insertion exercices:', { data: ie, error: ieErr });
+        if (ieErr) {
+          console.error('[workout-sessions][create] failed insert exercises', ieErr, { exercisesInsert });
+        } else {
+          insertedExercises = ie || [];
         }
+      }
+
       // Build response with Location header for clients that expect it
-      const res = NextResponse.json({ ok: true, data: data ?? null }, { status: 201 });
+      const res = NextResponse.json({ ok: true, data: data ?? null, exercises: insertedExercises }, { status: 201 });
       try {
         if (data && data.id && typeof res.headers !== 'undefined' && res.headers.set) {
           res.headers.set('Location', `/api/workout-sessions/${data.id}`);

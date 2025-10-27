@@ -20,7 +20,7 @@ interface WorkoutFormProps {
   clientId: string;
   onCancel: () => void;
   onSaved: (workout: any) => void;
-  programs?: string[];
+  programs?: Array<{ id: string; name: string } | string>;
   initialExercises?: any[];
 }
 
@@ -30,10 +30,11 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs, initialExercises =
   };
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [program, setProgram] = useState<string>('');
+  const [programId, setProgramId] = useState<string>('');
   const [duration, setDuration] = useState('');
   const [exercises, setExercises] = useState('');
   const [title, setTitle] = useState('');
-  const [status, setStatus] = useState<'completed' | 'missed'>('completed');
+  // Statut toujours 'completed'
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const [exercisesList, setExercisesList] = useState<any[]>(initialExercises || []);
@@ -60,7 +61,14 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs, initialExercises =
 
   useEffect(() => {
     if (programs && programs.length > 0 && !program) {
-      setProgram(programs[0]);
+      const first = programs[0];
+      if (typeof first === 'object' && 'id' in first && 'name' in first) {
+        setProgram(first.name);
+        setProgramId(first.id);
+      } else if (typeof first === 'string') {
+        setProgram(first);
+        setProgramId('');
+      }
     }
   }, [programs]);
 
@@ -146,6 +154,7 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs, initialExercises =
       const workoutData = {
         date,
         program: program.trim(),
+        program_id: programId,
         title: title.trim(),
         duration: parseInt(duration) || 0,
         exercises_count: parseInt(exercises) || exercisesList.length || 0,
@@ -175,13 +184,7 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs, initialExercises =
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Statut *</label>
-          <select value={status} onChange={(e) => setStatus(e.target.value as 'completed' | 'missed')} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent">
-            <option value="completed">✓ Séance réalisée</option>
-            <option value="missed">✗ Séance manquée</option>
-          </select>
-        </div>
+        {/* Statut supprimé, toujours 'completed' */}
       </div>
 
       {/* Editable exercises list UI */}
@@ -271,25 +274,29 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs, initialExercises =
 
       <div>
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Nom du programme *</label>
-        {programs && programs.length > 0 ? (
-          <select value={program} onChange={(e) => setProgram(e.target.value)} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500">
+        {programs && programs.length > 0 && typeof programs[0] === 'object' ? (
+          <select value={programId} onChange={(e) => {
+            const selected = programs.find((p: any) => p.id === e.target.value);
+            setProgramId(e.target.value);
+            setProgram(selected ? ((selected as any).name ?? selected) : '');
+          }} className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500">
             <option value="">Sélectionner un programme...</option>
-            {programs.map((p, i) => (<option key={i} value={p}>{p}</option>))}
+            {programs.map((p: any, i: number) => (<option key={i} value={p.id}>{p.name}</option>))}
           </select>
         ) : (
-          <input type="text" value={program} onChange={(e) => setProgram(e.target.value)} placeholder="Ex: Pectoraux/Triceps, Jambes, Cardio..." className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+          <input type="text" value={program} onChange={(e) => setProgram(e.target.value)} placeholder="Ex: Pectoraux/Triceps, Jambes, Cardio..." className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus-border-transparent" />
         )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Durée (minutes) *</label>
-          <input type="number" value={duration} onChange={(e) => setDuration(e.target.value)} placeholder="Ex: 45" min="1" className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+          <div className="w-full px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white font-semibold">{duration} min</div>
         </div>
 
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Nombre d'exercices *</label>
-          <input type="number" value={exercises} onChange={(e) => setExercises(e.target.value)} placeholder="Ex: 8" min="1" className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+          <div className="w-full px-3 py-2 rounded-lg bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white font-semibold">{exercises}</div>
         </div>
       </div>
 
@@ -396,6 +403,8 @@ interface Measurement {
 
 export default function ClientDashboard() {
   // ...existing code...
+  // State global pour IDs supprimés (séances)
+  const [deletedIds, setDeletedIds] = useState<string[]>([]);
   // --- Séance du jour state ---
   const [isStartingTodayWorkout, setIsStartingTodayWorkout] = useState(false);
 
@@ -1483,367 +1492,123 @@ export default function ClientDashboard() {
                 <p className="text-gray-600 dark:text-gray-400 mt-2">Suivez vos entraînements et performances</p>
               </div>
               <div>
-                {!addingWorkout ? (
-                  <button onClick={(e) => { e.stopPropagation(); setAddingWorkout(true); }} className="group relative px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl font-semibold shadow-2xl shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:scale-105 transition-all duration-300 overflow-hidden">
-                    <div className="absolute inset-0 bg-gradient-to-r from-emerald-700 to-teal-700 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
-                    <span className="relative flex items-center gap-2">
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
-                      Nouvelle séance
-                    </span>
-                  </button>
-                ) : (
-                  // Render the same WorkoutForm component defined later in this file
-                  <div className="mt-4">
-                    <WorkoutForm
-                      clientId={userProfile?.id || ''}
-                      programs={programs.map(p => p.name)}
-                      initialExercises={(selectedWorkoutObj && (selectedWorkoutObj.workout_exercises || selectedWorkoutObj.exercises)) || []}
-                      onCancel={() => setAddingWorkout(false)}
-                      onSaved={async (workout: any) => {
-                        try {
-                          const payload: any = {
-                            client_id: clientData?.id || userProfile?.id || null,
-                            date: workout.date,
-                            duration_minutes: workout.duration || 0,
-                            program_name: workout.title && workout.title.trim() ? workout.title.trim() : (workout.program || ''),
-                            // prefer explicit count, otherwise derive from exercises_list if present
-                            exercises_count: typeof workout.exercises === 'number' && workout.exercises > 0 ? workout.exercises : (Array.isArray(workout.exercises_list) ? workout.exercises_list.length : 0),
-                            status: workout.status || 'completed',
-                            notes: workout.notes || '',
-                            // include full exercises detail when available so server can persist sets/reps
-                            exercises_list: Array.isArray(workout.exercises_list) ? workout.exercises_list : [],
-                            exercises: Array.isArray(workout.exercises) ? workout.exercises : (Array.isArray(workout.exercises_list) ? workout.exercises_list : [])
-                          };
-
-                          const apiRes = await fetch('/api/workout-sessions', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ action: 'create', payload })
-                          });
-
-                          // Read raw text first so we can log useful diagnostics if parsing fails
-                          const rawText = await apiRes.text();
-                          let parsedBody: any = null;
+                <button onClick={(e) => { e.stopPropagation(); setAddingWorkout(true); }} className="group relative px-8 py-4 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl font-semibold shadow-2xl shadow-emerald-500/25 hover:shadow-emerald-500/40 hover:scale-105 transition-all duration-300 overflow-hidden">
+                  <div className="absolute inset-0 bg-gradient-to-r from-emerald-700 to-teal-700 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
+                  <span className="relative flex items-center gap-2">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                    Nouvelle séance
+                  </span>
+                </button>
+                {addingWorkout && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+                    <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl p-8 w-full max-w-xl mx-auto relative animate-fade-in overflow-y-auto max-h-[80vh]">
+                      <button onClick={() => setAddingWorkout(false)} className="absolute top-4 right-4 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 text-xl font-bold">×</button>
+                      <WorkoutForm
+                        clientId={userProfile?.id || ''}
+                        programs={programs.map(p => p.name)}
+                        initialExercises={(selectedWorkoutObj && (selectedWorkoutObj.workout_exercises || selectedWorkoutObj.exercises)) || []}
+                        onCancel={() => setAddingWorkout(false)}
+                        onSaved={async (workout: any) => {
                           try {
-                            parsedBody = rawText ? JSON.parse(rawText) : null;
-                          } catch (parseErr) {
-                            // keep parsedBody as null but preserve rawText for diagnostics
-                            parsedBody = null;
-                          }
-
-                          if (apiRes.ok) {
-                            // Success status: prefer returned data when available
-                            if (parsedBody && parsedBody.data) {
-                              const created = parsedBody.data;
-                              const newSession = {
-                                id: created.id,
-                                date: created.date,
-                                program: created.program_name || created.program || payload.program_name,
-                                duration: created.duration_minutes || payload.duration_minutes || 0,
-                                exercises: created.exercises_count || payload.exercises_count || 0,
-                                notes: created.notes || payload.notes || '',
-                                status: created.status || payload.status || 'completed',
-                                exercises_list: payload.exercises_list || []
-                              };
-                              setWorkouts(prev => [newSession as any, ...prev]);
-                            } else {
-                              // Server responded OK but returned no JSON body. Try to recover:
-                              // 1) Try Location header to extract an id
-                              // 2) Fallback to using payload values so UI shows the session
-                              let generatedId = `remote-unknown-${Date.now()}`;
-                              try {
-                                const location = apiRes.headers.get && apiRes.headers.get('location');
-                                if (location) {
-                                  const m = location.match(/([^/]+)\/?$/);
-                                  if (m && m[1]) generatedId = m[1];
-                                }
-                              } catch (hErr) {
-                                // ignore
-                              }
-
-                              const newSession = {
-                                id: generatedId,
-                                date: payload.date || workout.date,
-                                program: payload.program_name || payload.program || workout.program || '',
-                                duration: payload.duration_minutes || payload.duration || workout.duration || 0,
-                                exercises: payload.exercises_count || (Array.isArray(payload.exercises_list) ? payload.exercises_list.length : (workout.exercises || 0)),
-                                notes: payload.notes || workout.notes || '',
-                                status: payload.status || workout.status || 'completed',
-                                exercises_list: payload.exercises_list || workout.exercises_list || []
-                              };
-                              console.info('API responded OK with empty body; using payload to populate session (no returned JSON).', { generatedId });
-                              setWorkouts(prev => [newSession as any, ...prev]);
-                            }
-                          } else {
-                            // Non-ok response -> diagnostics and fallback
-                            // Convert headers to plain object
-                            const headersObj: Record<string, string> = {};
-                            try {
-                              if (apiRes.headers && typeof apiRes.headers.forEach === 'function') {
-                                apiRes.headers.forEach((v, k) => { headersObj[k] = v; });
-                              } else if (apiRes.headers && typeof apiRes.headers.get === 'function') {
-                                // attempt to extract some common headers
-                                const location = apiRes.headers.get('location');
-                                if (location) headersObj['location'] = location;
-                              }
-                            } catch (hErr) {
-                              // ignore header iteration errors
-                            }
-
-                            const diagnostics = {
-                              status: apiRes.status,
-                              statusText: apiRes.statusText,
-                              headers: headersObj,
-                              requestPayload: payload,
-                              rawText,
-                              parsedBody
-                            };
-
-                            // Print JSON string to avoid console live-object collapse showing '{}'
-                            try {
-                              console.error('API create workout failed', safeStringify(diagnostics));
-                              // also keep a raw debug object for expansion if needed
-                              console.debug('API create workout diagnostics (raw)', diagnostics);
-                            } catch (logErr) {
-                              console.error('API create workout failed (could not stringify diagnostics)', diagnostics, logErr);
-                            }
-
-                            const fallback = {
-                              id: `local-${Date.now()}`,
+                            const exercisesList = Array.isArray(workout.exercises_list) ? workout.exercises_list : [];
+                            const payload: any = {
+                              client_id: clientData?.id || userProfile?.id || null,
                               date: workout.date,
-                              program: workout.program,
-                              title: workout.title,
-                              duration: workout.duration || 0,
-                              exercises: workout.exercises || (Array.isArray(workout.exercises_list) ? workout.exercises_list.length : 0),
+                              duration_minutes: workout.duration || 0,
+                              program_name: workout.title && workout.title.trim() ? workout.title.trim() : (workout.program || ''),
+                              exercises_count: exercisesList.length,
+                              status: 'completed',
                               notes: workout.notes || '',
-                              status: workout.status || 'completed',
-                              exercises_list: workout.exercises_list || []
+                              exercises_list: exercisesList
                             };
-                            setWorkouts(prev => [fallback as any, ...prev]);
-
-                            const serverMessage = parsedBody && (parsedBody.error || parsedBody.message) ? (parsedBody.error || parsedBody.message) : null;
-                            alert(serverMessage ? `Séance ajoutée localement: ${serverMessage}` : 'Séance ajoutée localement, mais la sauvegarde sur le serveur a échoué.');
+                            const apiRes = await fetch('/api/workout-sessions', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ action: 'create', payload })
+                            });
+                            // ...existing code...
+                          } catch (e) {
+                            // ...existing code...
+                          } finally {
+                            setAddingWorkout(false);
                           }
-                        } catch (e) {
-                          console.error('Failed to create workout via API', e);
-                          const fallback = {
-                            id: `local-${Date.now()}`,
-                            date: workout.date,
-                            program: workout.program,
-                            title: workout.title,
-                            duration: workout.duration || 0,
-                            exercises: workout.exercises || 0,
-                            notes: workout.notes || '',
-                            status: workout.status || 'completed'
-                          };
-                          setWorkouts(prev => [fallback as any, ...prev]);
-                          alert('Séance ajoutée localement (API indisponible).');
-                        } finally {
-                          setAddingWorkout(false);
-                        }
-                      }}
-                    />
+                        }}
+                      />
+                    </div>
                   </div>
                 )}
               </div>
             </div>
 
-            {workouts.length === 0 ? (
-              <div className="relative bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl border border-white/20 dark:border-gray-700/30 p-12 text-center shadow-2xl">
-                <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 rounded-3xl pointer-events-none"></div>
-                <EmptyState
-                  title="Aucune séance enregistrée"
-                  description="Commencez votre première séance d'entraînement dès maintenant !"
-                  buttonText="Commencer une séance"
-                  onButtonClick={() => alert('Fonctionnalité à venir: Démarrer une séance')}
-                />
-              </div>
-            ) : (
-              <div className="space-y-6">
-                {workouts.map((workout) => (
-                  <div
-                    key={workout.id}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { /* emulate click */ (e.target as HTMLElement).click(); } }}
-                    onClick={async () => {
-                      try {
-                        setIsLoadingSessionDetails(true);
-                        // optimistic UI
-                        setSelectedWorkoutObj(workout);
-                        setSelectedDayObj(null);
-                        // Ensure the modal/details area is visible: create a minimal selectedProgram and open the modal
-                        try {
-                          const progName = (workout as any).program_name || (workout as any).programs?.name || (workout as any).session_title || 'Séance';
-                          setSelectedProgram({ id: (workout as any).program_id || null, name: progName } as any);
-                          setShowProgramModal(true);
-                        } catch (e) {
-                          console.warn('[ClientDashboard] failed to set selectedProgram for modal', e);
-                        }
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
 
-                        console.debug('[ClientDashboard] loading session details for workout.id=', workout.id, 'workout=', workout);
-
-                        // Determine best candidate session id field(s) returned by the view
-                        const candidateSessionIds = [
-                          workout.id,
-                          (workout as any).workout_session_id,
-                          (workout as any).session_id,
-                          (workout as any).session?.id,
-                          (workout as any).id__session,
-                        ].filter(Boolean) as string[];
-
-                        let fetched: any = null;
-
-                        // Try normalized tables first using any candidate id
-                        for (const sid of candidateSessionIds) {
-                          try {
-                            console.debug('[ClientDashboard] trying getSessionExercisesWithSets with sid=', sid);
-                            const f = await dataService.getSessionExercisesWithSets(sid);
-                            if (Array.isArray(f) && f.length > 0) {
-                              fetched = f;
-                              console.debug('[ClientDashboard] getSessionExercisesWithSets returned data for sid=', sid);
-                              break;
-                            }
-                          } catch (e) {
-                            console.warn('[ClientDashboard] getSessionExercisesWithSets failed for sid=', sid, e);
-                          }
-                        }
-
-                        // If still nothing, try fetching the full workout_session row (may include nested exercises/sets)
-                        if (!fetched) {
-                          const trySid = candidateSessionIds[0] || (workout as any).session_id || (workout as any).workout_session_id || null;
-                          if (trySid) {
-                            try {
-                              console.debug('[ClientDashboard] calling getWorkoutSessionById with id=', trySid);
-                              const ws = await dataService.getWorkoutSessionById(trySid);
-                              console.debug('[ClientDashboard] getWorkoutSessionById returned:', ws);
-                              if (ws && Array.isArray(ws.workout_session_exercises) && ws.workout_session_exercises.length > 0) {
-                                fetched = ws.workout_session_exercises.map((se: any) => ({ ...se, workout_session_sets: se.workout_session_sets || [] }));
-                              }
-                            } catch (e) {
-                              console.warn('[ClientDashboard] getWorkoutSessionById failed', e);
-                            }
-                          }
-                        }
-
-                        console.debug('[ClientDashboard] final fetched session_exercises:', fetched);
-
-                        if (Array.isArray(fetched) && fetched.length > 0) {
-                          const mapped = fetched.map((se: any) => ({
-                            id: se.id,
-                            workout_exercise_id: se.workout_exercise_id,
-                            exercise_id: se.exercise_id,
-                            exercise_name: se.exercise_name,
-                            order_in_workout: se.order ?? se.order_in_workout,
-                            sets: se.sets,
-                            reps: se.reps,
-                            weight: se.weight,
-                            rest_time: se.rest_seconds ?? se.rest_time,
-                            notes: se.notes,
-                            completedSets: (se.workout_session_sets || []).map((s: any) => ({
-                              setNumber: s.set_number,
-                              repsCompleted: s.reps_completed,
-                              weightUsed: s.weight_used,
-                              durationSeconds: s.duration_seconds,
-                            })),
-                          }));
-
-                          setSelectedWorkoutObj((prev: any) => ({ ...prev, workout_exercises: mapped, exercises: mapped }));
-                          return;
-                        }
-
-                        // If no normalized session rows, try legacy workout_sets lookup as a best-effort fallback
-                        try {
-                          if (Array.isArray(workout.exercises) && workout.exercises.length > 0) {
-                            console.debug('[ClientDashboard] no normalized session_exercises found; attempting legacy lookup for workout.exercises');
-                            const legacyPromises = workout.exercises.map(async (we: any) => {
-                              const exerciseKey = we.workout_exercise_id || we.id || we.exercise_id;
-                              if (!exerciseKey) return { we, rows: [] };
-                              try {
-                                const rows = await dataService.getLegacyWorkoutSetsByExercise(exerciseKey);
-                                return { we, rows };
-                              } catch (legacyErr) {
-                                console.warn('[ClientDashboard] legacy lookup failed for', exerciseKey, legacyErr);
-                                return { we, rows: [] };
-                              }
-                            });
-
-                            const legacyResults = await Promise.all(legacyPromises);
-                            const mapped = legacyResults.map(({ we, rows }: any) => ({
-                              id: we.id || we.workout_exercise_id || `${workout.id}-ex-${Math.random().toString(36).slice(2,8)}`,
-                              workout_exercise_id: we.workout_exercise_id || we.id || null,
-                              exercise_id: we.exercise_id || null,
-                              exercise_name: we.exercise_name || we.name || we.exercise_name || 'Exercice',
-                              order_in_workout: we.order_in_workout ?? we.order ?? 0,
-                              sets: we.sets || we.planned_sets || 0,
-                              reps: we.reps || we.planned_reps || '',
-                              weight: we.weight || we.suggested_weight || null,
-                              rest_time: we.rest_time || we.rest || 60,
-                              notes: we.notes || null,
-                              completedSets: (rows || []).map((r: any, idx: number) => ({
-                                setNumber: r.set_number ?? idx + 1,
-                                repsCompleted: r.reps ?? r.reps_completed ?? null,
-                                weightUsed: r.weight ?? r.weight_used ?? null,
-                                durationSeconds: r.duration_seconds ?? r.duration ?? null,
-                              })),
-                            }));
-
-                            setSelectedWorkoutObj((prev: any) => ({ ...prev, workout_exercises: mapped, exercises: mapped }));
-                            return;
-                          }
-                        } catch (fallbackErr) {
-                          console.warn('[ClientDashboard] fallback legacy lookup error', fallbackErr);
-                        }
-
-                        // Nothing found — leave selected object as-is so UI shows planned info
-                        console.debug('[ClientDashboard] no session_exercises or legacy sets found for workout', workout.id);
-
-                      } catch (err) {
-                        console.error('[ClientDashboard] failed loading session details', err);
-                      } finally {
-                        setIsLoadingSessionDetails(false);
-                      }
-                    }}
-                    className="cursor-pointer group relative bg-white/60 dark:bg-gray-800/60 backdrop-blur-xl rounded-3xl p-8 border border-white/20 dark:border-gray-700/30 hover:bg-white/80 dark:hover:bg-gray-800/80 transition-all duration-500 hover:shadow-2xl hover:shadow-emerald-500/20 hover:-translate-y-2"
-                  >
-                    <div>
-                      <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-teal-500/5 rounded-3xl pointer-events-none"></div>
-                      <div className="relative">
-                        <div className="flex justify-between items-start mb-6">
-                          <div className="flex items-start gap-4">
-                            <div className="w-14 h-14 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 flex items-center justify-center shadow-2xl shadow-emerald-500/25 group-hover:scale-110 transition-transform duration-300">
-                              <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
-                            </div>
-                            <div>
-                              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
-                                {(
-                                  (workout as any)?.session_title ||
-                                  (workout as any)?.session_name ||
-                                  (workout as any)?.title ||
-                                  (workout as any)?.name ||
-                                  (workout as any)?.program_name ||
-                                  workout.programs?.name ||
-                                  'Séance libre'
-                                )}
-                              </h3>
-                              <p className="text-gray-600 dark:text-gray-400 font-medium">
-                                {new Date(workout.date).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-                              </p>
-                            </div>
-                          </div>
-                          <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100/60 dark:bg-emerald-900/40 px-4 py-2 rounded-full backdrop-blur-sm">TERMINÉE</div>
+            {/* Nouveau bloc d'affichage détaillé pour les séances terminées */}
+            {workouts.filter(w => (w as any)?.status === 'completed').length > 0 && (
+              <div className="space-y-6 relative">
+                {/* Toast global de validation suppression */}
+                {deletedIds.length > 0 && (
+                  <div className="fixed top-8 left-1/2 transform -translate-x-1/2 z-50 px-6 py-3 bg-emerald-100 text-emerald-700 rounded-xl text-base font-semibold shadow-lg animate-fade-in">
+                    Séance supprimée !
+                  </div>
+                )}
+                {workouts.filter(w => (w as any)?.status === 'completed').map((workout) => {
+                  const w: any = workout;
+                  const handleDeleteWorkout = async () => {
+                    try {
+                      const res = await fetch('/api/workout-sessions', {
+                        method: 'DELETE',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: w.id })
+                      });
+                      if (!res.ok) throw new Error('Erreur API');
+                      setWorkouts((prev: any[]) => prev.filter(sess => sess.id !== w.id));
+                      setDeletedIds(prev => [...prev, w.id]);
+                      setTimeout(() => setDeletedIds(prev => prev.filter(id => id !== w.id)), 2000);
+                    } catch (e) {
+                      console.error('Erreur suppression séance', e);
+                    }
+                  };
+                  return (
+                    <div key={w.id} className="bg-white/80 dark:bg-gray-800/80 rounded-3xl p-8 border border-emerald-200 dark:border-emerald-700 shadow-emerald-500/10 shadow-lg mb-4 relative">
+                      <div className="flex items-start gap-4 mb-4">
+                        <div className="w-14 h-14 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 flex items-center justify-center shadow-2xl shadow-emerald-500/25">
+                          <svg className="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
                         </div>
-
-                        {workout.notes && (
-                          <div className="bg-gray-50/50 dark:bg-gray-800/30 rounded-2xl p-4 mb-4 backdrop-blur-sm">
-                            <p className="text-gray-600 dark:text-gray-400 leading-relaxed">{workout.notes}</p>
-                          </div>
+                        <div>
+                          <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+                            {w.session_title || w.session_name || w.title || w.name || w.program_name || w.programs?.name || 'Séance libre'}
+                          </h3>
+                          <p className="text-gray-600 dark:text-gray-400 font-medium">
+                            {new Date(w.date).toLocaleDateString('fr-FR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                          </p>
+                        </div>
+                        <button onClick={handleDeleteWorkout} className="ml-auto px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-all">Supprimer</button>
+                      </div>
+                      <div className="flex flex-wrap gap-6 mb-4">
+                        <div className="text-sm text-gray-700 dark:text-gray-300 font-medium">Durée : <span className="font-bold">{w.duration_minutes ?? w.duration ?? w.estimated_duration ?? 'N/A'} min</span></div>
+                        <div className="text-sm text-gray-700 dark:text-gray-300 font-medium">Exercices : <span className="font-bold">{Array.isArray(w.exercises) ? w.exercises.length : w.exercises || 'N/A'}</span></div>
+                      </div>
+                      {w.notes && (
+                        <div className="bg-gray-50/50 dark:bg-gray-800/30 rounded-2xl p-4 mb-4 backdrop-blur-sm">
+                          <p className="text-gray-600 dark:text-gray-400 leading-relaxed">{w.notes}</p>
+                        </div>
+                      )}
+                      <div className="mt-2">
+                        <div className="font-semibold mb-2 text-emerald-700 dark:text-emerald-300">Détail des exercices :</div>
+                        {Array.isArray(w.exercises) && w.exercises.length > 0 ? (
+                          <ul className="space-y-1">
+                            {w.exercises.map((ex: any, idx: number) => (
+                              <li key={ex.id || idx} className="text-sm text-gray-800 dark:text-gray-200">
+                                <span className="font-bold">{ex.exercise_name || ex.name || 'Exercice'}</span> — {ex.sets || '-'} × {ex.reps || '-'} {ex.weight ? `| ${ex.weight}kg` : ''} {ex.notes ? `| ${ex.notes}` : ''}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <div className="text-sm text-gray-500 dark:text-gray-400">Aucun exercice ajouté</div>
                         )}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
