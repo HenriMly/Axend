@@ -3242,9 +3242,7 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs, initialExercises =
     }
   }, [programs]);
 
-  useEffect(() => {
-    setExercisesList(initialExercises || []);
-  }, [initialExercises]);
+  // (Supprimé) useEffect qui réinitialisait exercisesList à chaque changement de initialExercises
 
   // Editable helpers for exercisesList inside the form
   const addEmptyExercise = () => {
@@ -3302,6 +3300,11 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs, initialExercises =
     }
   };
 
+  // Ajout des hooks d'état pour la barre de recherche d'exercices
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
   return (
     <div className="space-y-6">
       <div>
@@ -3338,8 +3341,91 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs, initialExercises =
         </div>
       </div>
 
-      {/* Editable exercises list UI */}
-      <div>
+
+      {/* Barre de recherche d'exercices (API Ninja) */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Rechercher un exercice (API Ninja)</label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Ex: biceps, chest, legs, squat..."
+            className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700"
+          />
+          <button
+            type="button"
+            onClick={async () => {
+              setIsSearching(true);
+              try {
+                const res = await fetch(`/api/external-exercises`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ muscle: searchQuery })
+                });
+                const j = await res.json();
+                if (!res.ok) {
+                  setSearchResults([]);
+                } else {
+                  setSearchResults(j.data || []);
+                }
+              } catch (e) {
+                setSearchResults([]);
+              } finally {
+                setIsSearching(false);
+              }
+            }}
+            className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            disabled={isSearching || !searchQuery.trim()}
+          >
+            {isSearching ? 'Recherche...' : 'Rechercher'}
+          </button>
+        </div>
+        {/* Résultats de recherche */}
+        {searchResults && searchResults.length > 0 && (
+          <div className="mt-2 space-y-2">
+            {searchResults.map((ex: any, idx: number) => (
+              <div key={ex.id || idx} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded border">
+                <div className="flex items-center gap-3">
+                  {ex.image_url && (
+                    <img src={ex.image_url} alt={ex.name} className="w-10 h-10 object-cover rounded" />
+                  )}
+                  <div>
+                    <div className="font-semibold text-sm">{ex.name || ex.exercise || ex.title}</div>
+                    <div className="text-xs text-gray-500">{ex.muscle || ex.category || ''} {ex.equipment ? `• ${ex.equipment}` : ''}</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="px-2 py-1 bg-green-600 text-white rounded"
+                  onClick={() => {
+                    setExercisesList(prev => [
+                      ...prev,
+                      {
+                        id: ex.id || `ext-${Date.now()}`,
+                        exercise_id: ex.id || null,
+                        exercise_name: ex.name || ex.exercise || ex.title || '',
+                        exercise_category: ex.muscle || ex.category || '',
+                        exercise_equipment: ex.equipment || '',
+                        image_url: ex.image_url || ex.image || ex.gifUrl || ex.gif || ex.thumbnail || ex.gif_url || null,
+                        order_in_workout: prev.length + 1,
+                        sets: 3,
+                        reps: '12',
+                        weight: '',
+                        rest_time: 60,
+                        notes: ''
+                      }
+                    ]);
+                  }}
+                >Ajouter</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+  {/* Liste des exercices ajoutés/détectés */}
+  <div>
         <div className="flex items-center justify-between mb-2">
           <div className="font-semibold">Exercices détectés / ajoutés</div>
           <div className="flex items-center gap-2">
