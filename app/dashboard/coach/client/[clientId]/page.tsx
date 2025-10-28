@@ -1,4 +1,358 @@
-'use client';
+"use client";
+
+// Composant pour éditer une séance d'entraînement (identique à l'ajout, mais prérempli)
+interface EditWorkoutFormProps {
+  workout: any;
+  programs: string[];
+  onCancel: () => void;
+  onSaved: (workout: any) => void;
+}
+
+function EditWorkoutForm({ workout, programs, onCancel, onSaved }: EditWorkoutFormProps) {
+  const [date, setDate] = useState(workout?.date || '');
+  const [program, setProgram] = useState(workout?.program || '');
+  const [duration, setDuration] = useState(workout?.duration || '');
+  const [exercises, setExercises] = useState(workout?.exercises || '');
+  const [title, setTitle] = useState(workout?.title || '');
+  const [status, setStatus] = useState(workout?.status || 'completed');
+  const [notes, setNotes] = useState(workout?.notes || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [exercisesList, setExercisesList] = useState<any[]>(workout?.exercisesList || workout?.exercises_list || []);
+
+  // Editable helpers for exercisesList inside the form
+  const addEmptyExercise = () => {
+    setExercisesList(prev => [...prev, { id: `tmp-${Date.now()}`, exercise_id: null, exercise_name: 'Nouvel exercice', order_in_workout: prev.length + 1, sets: 3, reps: '12', weight: '', rest_time: 60, notes: '' }]);
+  };
+
+  const updateExerciseAt = (index: number, patch: Partial<any>) => {
+    setExercisesList(prev => prev.map((ex, i) => i === index ? { ...ex, ...patch } : ex));
+  };
+
+  const removeExerciseAt = (index: number) => {
+    setExercisesList(prev => {
+      const copy = prev.slice();
+      copy.splice(index, 1);
+      return copy.map((e, i) => ({ ...e, order_in_workout: i + 1 }));
+    });
+  };
+
+  const moveExerciseInList = (from: number, to: number) => {
+    setExercisesList(prev => {
+      if (from < 0 || to < 0 || from >= prev.length || to >= prev.length) return prev;
+      const copy = prev.slice();
+      const [item] = copy.splice(from, 1);
+      copy.splice(to, 0, item);
+      return copy.map((e, i) => ({ ...e, order_in_workout: i + 1 }));
+    });
+  };
+
+  // Ajout des hooks d'état pour la barre de recherche d'exercices
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  const handleSave = async () => {
+    if (!program.trim() || !duration.trim() || !exercises.trim()) {
+      alert('Veuillez remplir tous les champs obligatoires');
+      return;
+    }
+    setIsSaving(true);
+    try {
+      const workoutData = {
+        ...workout,
+        date,
+        program: program.trim(),
+        title: title.trim(),
+        duration: parseInt(duration) || 0,
+        exercises: parseInt(exercises) || exercisesList.length || 0,
+        status,
+        notes: notes.trim(),
+        exercises_list: exercisesList
+      };
+      onSaved(workoutData);
+    } catch (error) {
+      console.error('Error saving workout:', error);
+      alert('Erreur lors de la sauvegarde');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+          ✏️ Modifier la séance d'entraînement
+        </h3>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Date *
+          </label>
+          <input 
+            type="date"
+            value={date} 
+            onChange={(e) => setDate(e.target.value)} 
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent" 
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Statut *
+          </label>
+          <select 
+            value={status} 
+            onChange={(e) => setStatus(e.target.value as 'completed' | 'missed')}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus-border-transparent"
+          >
+            <option value="completed">✓ Séance réalisée</option>
+            <option value="missed">✗ Séance manquée</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Barre de recherche d'exercices (API Ninja) */}
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Rechercher un exercice (API Ninja)</label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="Ex: biceps, chest, legs, squat..."
+            className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700"
+          />
+          <button
+            type="button"
+            onClick={async () => {
+              setIsSearching(true);
+              try {
+                const res = await fetch(`/api/external-exercises`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ muscle: searchQuery })
+                });
+                const j = await res.json();
+                if (!res.ok) {
+                  setSearchResults([]);
+                } else {
+                  setSearchResults(j.data || []);
+                }
+              } catch (e) {
+                setSearchResults([]);
+              } finally {
+                setIsSearching(false);
+              }
+            }}
+            className="px-3 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+            disabled={isSearching || !searchQuery.trim()}
+          >
+            {isSearching ? 'Recherche...' : 'Rechercher'}
+          </button>
+        </div>
+        {/* Résultats de recherche */}
+        {searchResults && searchResults.length > 0 && (
+          <div className="mt-2 space-y-2">
+            {searchResults.map((ex: any, idx: number) => (
+              <div key={ex.id || idx} className="flex items-center justify-between p-2 bg-gray-50 dark:bg-gray-800 rounded border">
+                <div className="flex items-center gap-3">
+                  {ex.image_url && (
+                    <img src={ex.image_url} alt={ex.name} className="w-10 h-10 object-cover rounded" />
+                  )}
+                  <div>
+                    <div className="font-semibold text-sm">{ex.name || ex.exercise || ex.title}</div>
+                    <div className="text-xs text-gray-500">{ex.muscle || ex.category || ''} {ex.equipment ? `• ${ex.equipment}` : ''}</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="px-2 py-1 bg-green-600 text-white rounded"
+                  onClick={() => {
+                    setExercisesList(prev => [
+                      ...prev,
+                      {
+                        id: ex.id || `ext-${Date.now()}`,
+                        exercise_id: ex.id || null,
+                        exercise_name: ex.name || ex.exercise || ex.title || '',
+                        exercise_category: ex.muscle || ex.category || '',
+                        exercise_equipment: ex.equipment || '',
+                        image_url: ex.image_url || ex.image || ex.gifUrl || ex.gif || ex.thumbnail || ex.gif_url || null,
+                        order_in_workout: prev.length + 1,
+                        sets: 3,
+                        reps: '12',
+                        weight: '',
+                        rest_time: 60,
+                        notes: ''
+                      }
+                    ]);
+                  }}
+                >Ajouter</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Liste des exercices ajoutés/détectés */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <div className="font-semibold">Exercices détectés / ajoutés</div>
+          <div className="flex items-center gap-2">
+            <button onClick={addEmptyExercise} type="button" className="px-2 py-1 bg-green-600 text-white rounded">+ Exo</button>
+          </div>
+        </div>
+
+        {exercisesList.length === 0 ? (
+          <div className="text-sm text-gray-500">Aucun exercice détecté</div>
+        ) : (
+          <div className="space-y-2">
+            {exercisesList.map((ex, idx) => (
+              <div key={ex.id || idx} className="p-3 bg-white dark:bg-gray-800 rounded border flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div className="flex-1 w-full md:w-auto">
+                  <div className="flex items-start md:items-center justify-between">
+                    <div className="min-w-0">
+                      <input value={ex.exercise_name || ''} onChange={(e) => updateExerciseAt(idx, { exercise_name: e.target.value })} className="font-semibold truncate text-sm w-full md:w-64 bg-transparent" />
+                      <div className="text-xs text-gray-500">ordre: {ex.order_in_workout ?? idx + 1}</div>
+                    </div>
+                    <div className="flex items-center space-x-2 text-sm text-gray-500 mt-2 md:mt-0">
+                      <button onClick={() => moveExerciseInList(idx, Math.max(0, idx - 1))} className="px-2 py-1 bg-gray-100 rounded hover:bg-gray-200">↑</button>
+                      <button onClick={() => moveExerciseInList(idx, Math.min(exercisesList.length - 1, idx + 1))} className="px-2 py-1 bg-gray-100 rounded hover:bg-gray-200">↓</button>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <label className="text-xs text-gray-500">Sets</label>
+                      <input value={ex.sets ?? ''} onChange={(e) => updateExerciseAt(idx, { sets: parseInt(e.target.value) || 0 })} className="w-20 sm:w-16 px-2 py-1 border rounded bg-white dark:bg-gray-700 text-sm" />
+                      <label className="text-xs text-gray-500">Reps</label>
+                      <input value={ex.reps ?? ''} onChange={(e) => updateExerciseAt(idx, { reps: e.target.value })} className="w-24 sm:w-20 px-2 py-1 border rounded bg-white dark:bg-gray-700 text-sm" />
+                    </div>
+                    <div className="flex flex-wrap items-center justify-start sm:justify-end gap-2">
+                      <label className="text-xs text-gray-500">Poids</label>
+                      <input value={ex.weight ?? ''} onChange={(e) => updateExerciseAt(idx, { weight: e.target.value })} className="w-24 sm:w-20 px-2 py-1 border rounded bg-white dark:bg-gray-700 text-sm" />
+                      <label className="text-xs text-gray-500">Repos</label>
+                      <input value={ex.rest_time ?? ''} onChange={(e) => updateExerciseAt(idx, { rest_time: parseInt(e.target.value) || 0 })} className="w-24 sm:w-20 px-2 py-1 border rounded bg-white dark:bg-gray-700 text-sm" />
+                    </div>
+                  </div>
+
+                  <div className="mt-3">
+                    <label className="text-xs text-gray-500">Notes</label>
+                    <input value={ex.notes ?? ''} onChange={(e) => updateExerciseAt(idx, { notes: e.target.value })} className="w-full px-2 py-1 border rounded bg-white dark:bg-gray-700 text-sm" />
+                  </div>
+                </div>
+
+                <div className="flex-shrink-0 flex items-start md:items-center md:flex-col md:justify-center space-y-2 md:ml-4">
+                  <button onClick={() => removeExerciseAt(idx)} className="text-red-600 px-3 py-1 border border-red-200 rounded">Supprimer</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          Titre de la séance (optionnel)
+        </label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="Ex: Séance Pecs - Fente + HIIT"
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus-border-transparent"
+        />
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          Nom du programme *
+        </label>
+        {programs && programs.length > 0 ? (
+          <select
+            value={program}
+            onChange={(e) => setProgram(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="">Sélectionner un programme...</option>
+            {programs.map((p, i) => (
+              <option key={i} value={p}>{p}</option>
+            ))}
+          </select>
+        ) : (
+          <input 
+            type="text"
+            value={program} 
+            onChange={(e) => setProgram(e.target.value)} 
+            placeholder="Ex: Pectoraux/Triceps, Jambes, Cardio..."
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus-border-transparent" 
+          />
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Durée (minutes) *
+          </label>
+          <input 
+            type="number"
+            value={duration} 
+            onChange={(e) => setDuration(e.target.value)} 
+            placeholder="Ex: 45"
+            min="1"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus-border-transparent" 
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Nombre d'exercices *
+          </label>
+          <input 
+            type="number"
+            value={exercises} 
+            onChange={(e) => setExercises(e.target.value)} 
+            placeholder="Ex: 8"
+            min="1"
+            className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus-border-transparent" 
+          />
+        </div>
+      </div>
+
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+          Notes (optionnel)
+        </label>
+        <textarea 
+          value={notes} 
+          onChange={(e) => setNotes(e.target.value)} 
+          placeholder="Commentaires sur la séance, difficultés rencontrées, remarques..."
+          rows={3}
+          className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus-border-transparent" 
+        />
+      </div>
+
+      <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200 dark:border-gray-600">
+        <button 
+          onClick={onCancel} 
+          className="px-4 py-2 text-gray-700 dark:text-gray-300 bg-gray-200 dark:bg-gray-600 rounded-lg hover:bg-gray-300 dark:hover:bg-gray-500"
+        >
+          Annuler
+        </button>
+        <button 
+          onClick={handleSave} 
+          disabled={isSaving}
+          className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+        >
+          {isSaving ? 'Enregistrement...' : 'Sauvegarder la séance'}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 import Link from "next/link";
 import { useState, useEffect, use } from "react";
@@ -2028,166 +2382,26 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
       {/* Edit Workout Modal (local state) */}
       {editingWorkout && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Éditer séance</h3>
-            <div className="space-y-3">
-              <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Date</label>
-                <input
-                  type="date"
-                  value={editingWorkout?.date ? new Date(editingWorkout.date).toISOString().split('T')[0] : ''}
-                  onChange={(e) => setEditingWorkout((prev:any)=> ({ ...prev, date: e.target.value }))}
-                  className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900"
-                />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Titre de la séance (optionnel)</label>
-                <input value={editingWorkout.title || ''} onChange={(e) => setEditingWorkout((prev:any)=> ({ ...prev, title: e.target.value }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" />
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Programme</label>
-                <input value={editingWorkout.program} onChange={(e) => setEditingWorkout((prev:any)=> ({ ...prev, program: e.target.value }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Durée (min)</label>
-                  <input type="number" value={editingWorkout.duration} onChange={(e) => setEditingWorkout((prev:any)=> ({ ...prev, duration: parseInt(e.target.value) || 0 }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" />
-                </div>
-                <div>
-                  <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Exercices (#)</label>
-                  <input type="number" value={editingWorkout?.exercises ?? 0} onChange={(e) => setEditingWorkout((prev:any)=> ({ ...prev, exercises: parseInt(e.target.value) || 0 }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" />
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Statut</label>
-                <select value={editingWorkout.status} onChange={(e) => setEditingWorkout((prev:any)=> ({ ...prev, status: e.target.value }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900">
-                  <option value="completed">✓ Séance réalisée</option>
-                  <option value="missed">✗ Séance manquée</option>
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm text-gray-700 dark:text-gray-300 mb-1">Notes</label>
-                <textarea value={editingWorkout.notes || ''} onChange={(e) => setEditingWorkout((prev:any)=> ({ ...prev, notes: e.target.value }))} className="w-full px-3 py-2 border rounded bg-white dark:bg-gray-700 text-gray-900" rows={3}></textarea>
-              </div>
-              <div className="flex justify-end space-x-3">
-                <button onClick={() => { setEditingWorkout(null); setEditingIndex(null); }} className="px-4 py-2 bg-gray-200 rounded">Annuler</button>
-                <button onClick={async () => {
-                  console.log('[ClientDetail] Saving workout from modal, editingWorkout:', editingWorkout, 'editingIndex:', editingIndex);
-                  // Persist to DB when possible
-                  try {
-                    if (!editingWorkout) {
-                      alert('Aucune donnée de séance à sauvegarder.');
-                      return;
-                    }
-                    if (!editingWorkout.date) {
-                      alert('La date est requise');
-                      return;
-                    }
-                    // Build payload for DB
-                    const payload: any = {
-                      client_id: client!.id,
-                      date: editingWorkout.date,
-                      duration_minutes: editingWorkout.duration || 0,
-                      // Persist a dedicated session_title (preferred) and keep program_name for legacy
-                      session_title: editingWorkout.title && String(editingWorkout.title).trim() ? String(editingWorkout.title).trim() : null,
-                      program_name: editingWorkout.title && String(editingWorkout.title).trim() ? String(editingWorkout.title).trim() : editingWorkout.program,
-                      exercises_count: editingWorkout.exercises ?? 0,
-                      status: editingWorkout.status || 'completed',
-                      notes: editingWorkout.notes || ''
-                    };
-
-                    // If editing an existing persisted workout (id not local-...), update
-                    try {
-                      // Prefer server API that uses service-role key
-                      const apiRes = await fetch('/api/workout-sessions', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ action: editingWorkout.id && !String(editingWorkout.id).startsWith('local-') ? 'update' : 'create', payload: editingWorkout.id && !String(editingWorkout.id).startsWith('local-') ? { id: editingWorkout.id, ...payload } : payload })
-                      });
-                      const json = await apiRes.json();
-                        if (apiRes.ok && json.data) {
-                        const created = json.data;
-                        const newSession = {
-                          id: created.id,
-                          date: created.date,
-                          // prefer explicit session_title if present
-                          session_title: created.session_title || created.session_name || null,
-                          program: created.program_name || created.program || editingWorkout.program,
-                          duration: created.duration_minutes || editingWorkout.duration || 0,
-                          exercises: created.exercises_count || editingWorkout.exercises || 0,
-                          notes: created.notes || editingWorkout.notes || '',
-                          status: created.status || editingWorkout.status || 'completed'
-                        };
-                        if (editingWorkout.id && !String(editingWorkout.id).startsWith('local-')) {
-                          // Persisted session: replace by id
-                          setWorkoutSessions(prev => prev.map(s => s.id === newSession.id ? newSession : s));
-                        } else if (editingIndex != null) {
-                          // We were editing a local or newly-created entry in the list: replace at the same index
-                          setWorkoutSessions(prev => {
-                            const copy = [...prev];
-                            copy[editingIndex] = newSession;
-                            return copy;
-                          });
-                        } else {
-                          // New session: prepend
-                          setWorkoutSessions(prev => [newSession, ...prev]);
-                        }
-                      } else {
-                        // fallback to local and show error
-                        const errMsg = json?.error || 'unknown error';
-                        console.error('API error creating/updating workout session', errMsg, json);
-                        const fallback = {
-                          id: editingWorkout.id || `local-${Date.now()}`,
-                          date: editingWorkout.date,
-                          // store title locally as session_title for UI
-                          session_title: editingWorkout.title || null,
-                          program: editingWorkout.program,
-                          duration: editingWorkout.duration || 0,
-                          exercises: editingWorkout.exercises ?? 0,
-                          notes: editingWorkout.notes || '',
-                          status: editingWorkout.status || 'completed'
-                        };
-                        if (editingIndex != null) {
-                          setWorkoutSessions(prev => {
-                            const copy = [...prev];
-                            copy[editingIndex] = fallback;
-                            return copy;
-                          });
-                        } else {
-                          setWorkoutSessions(prev => [fallback, ...prev]);
-                        }
-                        alert('La séance a été ajoutée localement mais la sauvegarde serveur a échoué. Vérifiez la configuration du service-role.');
-                      }
-                    } catch (apiErr) {
-                      console.error('Failed to call server API for workout session', apiErr);
-                      const fallback = {
-                        id: editingWorkout.id || `local-${Date.now()}`,
-                        date: editingWorkout.date,
-                        session_title: editingWorkout.title || null,
-                        program: editingWorkout.program,
-                        duration: editingWorkout.duration || 0,
-                        exercises: editingWorkout.exercises ?? 0,
-                        notes: editingWorkout.notes || '',
-                        status: editingWorkout.status || 'completed'
-                      };
-                      if (editingIndex != null) {
-                        setWorkoutSessions(prev => {
-                          const copy = [...prev];
-                          copy[editingIndex] = fallback;
-                          return copy;
-                        });
-                      } else {
-                        setWorkoutSessions(prev => [fallback, ...prev]);
-                      }
-                      alert('La séance a été ajoutée localement mais la sauvegarde a échoué (API indisponible).');
-                    }
-                  } finally {
-                    setEditingWorkout(null);
-                    setEditingIndex(null);
-                  }
-                }} className="px-4 py-2 bg-blue-600 text-white rounded">Sauvegarder</button>
-              </div>
-            </div>
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-2xl">
+            {/* Identical form to add, but prefilled with editingWorkout values */}
+            <EditWorkoutForm
+              workout={editingWorkout}
+              programs={client?.programs || []}
+              onCancel={() => { setEditingWorkout(null); setEditingIndex(null); }}
+              onSaved={(updatedWorkout) => {
+                // Save logic: update session in state and persist if needed
+                if (editingIndex != null) {
+                  setWorkoutSessions(prev => {
+                    const copy = [...prev];
+                    copy[editingIndex] = { ...copy[editingIndex], ...updatedWorkout };
+                    return copy;
+                  });
+                }
+                setEditingWorkout(null);
+                setEditingIndex(null);
+                // Optionally, persist to server here
+              }}
+            />
           </div>
         </div>
       )}
