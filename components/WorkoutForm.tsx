@@ -94,9 +94,13 @@ export default function WorkoutForm({ onCancel, onSaved, programs, initialExerci
     if (!query.trim()) return;
     setIsSearching(true);
     try {
-      const res = await fetch(`/api/external-exercises?search=${encodeURIComponent(query)}`);
+      const res = await fetch('/api/external-exercises', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: query })
+      });
       const data = await res.json();
-      setSearchResults(data.results || []);
+      setSearchResults(data.data || []);
     } catch (e) {
       setSearchResults([]);
     }

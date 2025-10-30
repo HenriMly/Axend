@@ -11,8 +11,12 @@ interface EditWorkoutFormProps {
 function EditWorkoutForm({ workout, programs, onCancel, onSaved }: EditWorkoutFormProps) {
   const [date, setDate] = useState(workout?.date || '');
   const [program, setProgram] = useState(workout?.program || '');
-  const [duration, setDuration] = useState(workout?.duration || '');
-  const [exercises, setExercises] = useState(workout?.exercises || '');
+  const [duration, setDuration] = useState(
+    typeof workout?.duration === 'string' ? workout.duration : String(workout?.duration ?? '')
+  );
+  const [exercises, setExercises] = useState(
+    typeof workout?.exercises === 'string' ? workout.exercises : String(workout?.exercises ?? '')
+  );
   const [title, setTitle] = useState(workout?.title || '');
   const [status, setStatus] = useState(workout?.status || 'completed');
   const [notes, setNotes] = useState(workout?.notes || '');
@@ -52,7 +56,7 @@ function EditWorkoutForm({ workout, programs, onCancel, onSaved }: EditWorkoutFo
   const [isSearching, setIsSearching] = useState(false);
 
   const handleSave = async () => {
-    if (!program.trim() || !duration.trim() || !exercises.trim()) {
+  if (!program.trim() || !String(duration).trim() || !String(exercises).trim()) {
       alert('Veuillez remplir tous les champs obligatoires');
       return;
     }
@@ -1094,15 +1098,26 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                               const idx = workoutSessions.findIndex(s => s.id && workout.id && String(s.id) === String(workout.id));
                               setEditingIndex(idx >= 0 ? idx : null);
                               const wAny: any = workout;
+                              let exercisesList = [];
+                              if (typeof wAny.exercises === 'string') {
+                                try {
+                                  exercisesList = JSON.parse(wAny.exercises);
+                                } catch (e) {
+                                  exercisesList = [];
+                                }
+                              } else if (Array.isArray(wAny.exercises)) {
+                                exercisesList = wAny.exercises;
+                              }
                               const normalized = {
                                 id: wAny.id,
                                 date: wAny.date,
                                 program: wAny.program || wAny.program_name || wAny.name || '',
                                 title: wAny.title && String(wAny.title).trim() ? String(wAny.title).trim() : (wAny.program || wAny.program_name || wAny.name || ''),
                                 duration: wAny.duration || wAny.duration_minutes || 0,
-                                exercises: Array.isArray(wAny.exercises) ? wAny.exercises.length : (wAny.exercises ?? wAny.exercises_count ?? 0),
+                                exercises: exercisesList.length,
                                 notes: wAny.notes || '',
-                                status: wAny.status || 'completed'
+                                status: wAny.status || 'completed',
+                                exercises_list: exercisesList
                               };
                               setEditingWorkout(normalized);
                             }} className="px-3 py-1 bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 text-xs font-semibold rounded-lg hover:scale-105 transition-all duration-200">
@@ -1504,20 +1519,32 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
                             </div>
                           )}
                           <div>
-                            <button onClick={() => {
+                            <button onClick={async () => {
                               setEditingIndex(index);
-                              const sAny: any = session;
-                              const normalized = {
-                                id: sAny.id,
-                                date: sAny.date,
-                                program: sAny.program || sAny.program_name || '',
-                                title: sAny.title && String(sAny.title).trim() ? String(sAny.title).trim() : (sAny.program || sAny.program_name || ''),
-                                duration: sAny.duration || sAny.duration_minutes || 0,
-                                exercises: Array.isArray(sAny.exercises) ? sAny.exercises.length : (sAny.exercises ?? sAny.exercises_count ?? 0),
-                                notes: sAny.notes || '',
-                                status: sAny.status || 'completed'
-                              };
-                              setEditingWorkout(normalized);
+                              // Récupère la séance complète depuis l'API (incluant les exercices)
+                              try {
+                                const res = await fetch(`/api/workout-sessions?id=${session.id}`);
+                                const data = await res.json();
+                                if (!res.ok || !data || !data.data) {
+                                  alert("Impossible de récupérer la séance complète");
+                                  return;
+                                }
+                                const sAny = data.data;
+                                const normalized = {
+                                  id: sAny.id,
+                                  date: sAny.date,
+                                  program: sAny.program || sAny.program_name || '',
+                                  title: sAny.title && String(sAny.title).trim() ? String(sAny.title).trim() : (sAny.program || sAny.program_name || ''),
+                                  duration: sAny.duration_minutes || sAny.duration || 0,
+                                  exercises: Array.isArray(sAny.exercises) ? sAny.exercises.length : (sAny.exercises ?? sAny.exercises_count ?? 0),
+                                  notes: sAny.notes || '',
+                                  status: sAny.status || 'completed',
+                                  exercises_list: Array.isArray(sAny.exercises) ? sAny.exercises : []
+                                };
+                                setEditingWorkout(normalized);
+                              } catch (e) {
+                                alert("Erreur lors de la récupération des exercices");
+                              }
                             }} className="text-sm text-blue-600 hover:underline mr-3">Éditer</button>
                             <button onClick={async () => {
                               if (!confirm('Supprimer cette séance ?')) return;
@@ -2382,26 +2409,44 @@ export default function ClientDetail({ params }: { params: Promise<{ clientId: s
       {/* Edit Workout Modal (local state) */}
       {editingWorkout && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-2xl">
-            {/* Identical form to add, but prefilled with editingWorkout values */}
-            <EditWorkoutForm
-              workout={editingWorkout}
-              programs={client?.programs || []}
-              onCancel={() => { setEditingWorkout(null); setEditingIndex(null); }}
-              onSaved={(updatedWorkout) => {
-                // Save logic: update session in state and persist if needed
-                if (editingIndex != null) {
-                  setWorkoutSessions(prev => {
-                    const copy = [...prev];
-                    copy[editingIndex] = { ...copy[editingIndex], ...updatedWorkout };
-                    return copy;
-                  });
-                }
-                setEditingWorkout(null);
-                setEditingIndex(null);
-                // Optionally, persist to server here
-              }}
-            />
+          <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-2xl shadow-2xl relative" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
+            <div className="p-6">
+              {/* Identical form to add, but prefilled with editingWorkout values */}
+              <EditWorkoutForm
+                workout={editingWorkout}
+                programs={client?.programs || []}
+                onCancel={() => { setEditingWorkout(null); setEditingIndex(null); }}
+                onSaved={async (updatedWorkout) => {
+                  try {
+                    await fetch('/api/workout-sessions', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        action: 'complete_with_details',
+                        payload: {
+                          session_id: updatedWorkout.id,
+                          duration_minutes: updatedWorkout.duration,
+                          notes: updatedWorkout.notes,
+                          title: updatedWorkout.title,
+                          exercises: updatedWorkout.exercises_list || []
+                        }
+                      })
+                    });
+                    if (editingIndex != null) {
+                      setWorkoutSessions(prev => {
+                        const copy = [...prev];
+                        copy[editingIndex] = { ...copy[editingIndex], ...updatedWorkout };
+                        return copy;
+                      });
+                    }
+                  } catch (e) {
+                    alert('Erreur lors de la sauvegarde sur le serveur');
+                  }
+                  setEditingWorkout(null);
+                  setEditingIndex(null);
+                }}
+              />
+            </div>
           </div>
         </div>
       )}

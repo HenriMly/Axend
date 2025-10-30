@@ -84,7 +84,11 @@ function WorkoutForm({ clientId, onCancel, onSaved, programs, initialExercises =
   const runSearch = async (q: string) => {
     setIsSearching(true);
     try {
-      const res = await fetch('/api/external-exercises', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ muscle: q }) });
+      const res = await fetch('/api/external-exercises', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: q })
+      });
       const j = await res.json();
       if (!res.ok) {
         console.error('Search external exercises failed', j);

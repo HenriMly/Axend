@@ -1,3 +1,24 @@
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+    if (!id) {
+      return NextResponse.json({ error: 'missing id' }, { status: 400 });
+    }
+    // Récupère la séance depuis la vue v_workout_sessions_with_exercises
+    const { data, error } = await supabaseAdmin
+      .from('v_workout_sessions_with_exercises')
+      .select('*')
+      .eq('id', id)
+      .single();
+    if (error) {
+      return NextResponse.json({ error: errorText(error) }, { status: 500 });
+    }
+    return NextResponse.json({ data });
+  } catch (err) {
+    return NextResponse.json({ error: errorText(err) }, { status: 500 });
+  }
+}
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import supabaseAdmin from '@/lib/supabaseAdmin'
@@ -143,12 +164,13 @@ export async function POST(req: Request) {
       }
       if (!session_id) return NextResponse.json({ error: 'missing session_id' }, { status: 400 })
 
-      // Update session status/duration/notes first
-  const updatePayload: any = { status: 'completed' }
-      if (typeof duration_minutes !== 'undefined') updatePayload.duration_minutes = duration_minutes
-      if (typeof notes !== 'undefined') updatePayload.notes = notes
-  // include exercises count if available
-  if (Array.isArray(exercises)) updatePayload.exercises_count = exercises.length
+    // Update session status/duration/notes/title first
+    const updatePayload: any = { status: 'completed' };
+    if (typeof duration_minutes !== 'undefined') updatePayload.duration_minutes = duration_minutes;
+    if (typeof notes !== 'undefined') updatePayload.notes = notes;
+    if (typeof payload.title !== 'undefined') updatePayload.session_title = payload.title;
+    // include exercises count if available
+    if (Array.isArray(exercises)) updatePayload.exercises_count = exercises.length;
 
       // Try RPC first for atomic insert (if the function exists in DB)
       try {
@@ -181,11 +203,18 @@ export async function POST(req: Request) {
       const { data: updatedSession, error: updErr } = await supabaseAdmin.from('workout_sessions').update(updatePayload).eq('id', session_id).select().single()
       if (updErr) {
         console.error('[workout-sessions][complete_with_details] failed update session', session_id, updErr, { payload })
-          return NextResponse.json({ ok: false, error: errorText(updErr), details: safeSerialize(updErr) }, { status: 500 })
+        return NextResponse.json({ ok: false, error: errorText(updErr), details: safeSerialize(updErr) }, { status: 500 })
+      }
+
+      // Supprimer les exercices existants pour cette séance
+      const { error: delErr } = await supabaseAdmin.from('workout_session_exercises').delete().eq('workout_session_id', session_id);
+      if (delErr) {
+        console.error('[workout-sessions][complete_with_details] failed to delete old exercises', delErr);
+        // On continue quand même pour ne pas bloquer la sauvegarde
       }
 
       // Insert session exercises (if provided)
-      let insertedExercises: any[] = []
+      let insertedExercises: any[] = [];
       if (Array.isArray(exercises) && exercises.length > 0) {
         const exercisesInsert = exercises.map((ex: any) => ({
           workout_session_id: session_id,
@@ -198,67 +227,67 @@ export async function POST(req: Request) {
           weight: ex.weight || ex.planned_weight || null,
           rest_seconds: ex.rest_time || ex.planned_rest_seconds || null,
           notes: ex.notes || ex.instructions || null
-        }))
+        }));
 
-        const { data: ie, error: ieErr } = await supabaseAdmin.from('workout_session_exercises').insert(exercisesInsert).select()
+        const { data: ie, error: ieErr } = await supabaseAdmin.from('workout_session_exercises').insert(exercisesInsert).select();
         if (ieErr) {
-          console.error('[workout-sessions][complete_with_details] failed insert exercises', ieErr, { exercises })
+          console.error('[workout-sessions][complete_with_details] failed insert exercises', ieErr, { exercises });
           // Fallback: persist full JSON into workout_sessions.exercises to avoid data loss
           try {
-            const fallbackPayload: any = { exercises: exercises }
-            const { data: fallbackData, error: fallbackErr } = await supabaseAdmin.from('workout_sessions').update(fallbackPayload).eq('id', session_id).select().single()
+            const fallbackPayload: any = { exercises: exercises };
+            const { data: fallbackData, error: fallbackErr } = await supabaseAdmin.from('workout_sessions').update(fallbackPayload).eq('id', session_id).select().single();
             if (fallbackErr) {
-              console.error('[workout-sessions][complete_with_details] fallback update failed', fallbackErr)
-                return NextResponse.json({ ok: false, error: { original: errorText(ieErr), fallback_error: errorText(fallbackErr) }, details: { original: safeSerialize(ieErr), fallback: safeSerialize(fallbackErr) } }, { status: 500 })
+              console.error('[workout-sessions][complete_with_details] fallback update failed', fallbackErr);
+              return NextResponse.json({ ok: false, error: { original: errorText(ieErr), fallback_error: errorText(fallbackErr) }, details: { original: safeSerialize(ieErr), fallback: safeSerialize(fallbackErr) } }, { status: 500 });
             }
-            console.log('[workout-sessions][complete_with_details] fallback saved into workout_sessions.exercises')
-            return NextResponse.json({ ok: true, data: { session: updatedSession, fallback_saved: true } })
+            console.log('[workout-sessions][complete_with_details] fallback saved into workout_sessions.exercises');
+            return NextResponse.json({ ok: true, data: { session: updatedSession, fallback_saved: true } });
           } catch (e) {
-            console.error('[workout-sessions][complete_with_details] fallback unexpected error', e)
-              return NextResponse.json({ ok: false, error: errorText(ieErr), details: safeSerialize(ieErr) }, { status: 500 })
+            console.error('[workout-sessions][complete_with_details] fallback unexpected error', e);
+            return NextResponse.json({ ok: false, error: errorText(ieErr), details: safeSerialize(ieErr) }, { status: 500 });
           }
         }
-        insertedExercises = ie || []
+        insertedExercises = ie || [];
 
         // Prepare and insert sets if any completedSets were provided
-        const setsToInsert: any[] = []
+        const setsToInsert: any[] = [];
         for (let i = 0; i < exercises.length; i++) {
-          const completed = exercises[i].completedSets || []
-          const inserted = insertedExercises[i]
-          if (!inserted) continue
+          const completed = exercises[i].completedSets || [];
+          const inserted = insertedExercises[i];
+          if (!inserted) continue;
           for (let j = 0; j < completed.length; j++) {
-            const cs = completed[j]
+            const cs = completed[j];
             setsToInsert.push({
               session_exercise_id: inserted.id,
               set_number: cs.setNumber || (j + 1),
               reps_completed: typeof cs.repsCompleted !== 'undefined' ? cs.repsCompleted : (cs.reps || null),
               weight_used: typeof cs.weightUsed !== 'undefined' ? cs.weightUsed : (cs.weight || null),
               duration_seconds: cs.durationSeconds || cs.duration || null
-            })
+            });
           }
         }
 
         if (setsToInsert.length > 0) {
-          const { data: insertedSets, error: setsErr } = await supabaseAdmin.from('workout_session_sets').insert(setsToInsert).select()
+          const { data: insertedSets, error: setsErr } = await supabaseAdmin.from('workout_session_sets').insert(setsToInsert).select();
           if (setsErr) {
-            console.error('[workout-sessions][complete_with_details] failed insert sets', setsErr)
-            return NextResponse.json({ ok: false, error: errorText(setsErr) }, { status: 500 })
+            console.error('[workout-sessions][complete_with_details] failed insert sets', setsErr);
+            return NextResponse.json({ ok: false, error: errorText(setsErr) }, { status: 500 });
           }
 
           // Mirror inserted sets into legacy `workout_sets` table if it exists
           try {
             // Build rows for workout_sets; map workout_exercise_id if available
-            const workoutSetsRows: any[] = []
+            const workoutSetsRows: any[] = [];
             for (let k = 0; k < insertedSets.length; k++) {
-              const s = insertedSets[k]
+              const s = insertedSets[k];
               // find the original exercise payload that corresponds to this session_exercise_id
               const originalEx = exercises.find((ex: any) => {
                 // match by workout_exercise_id if present, or by exercise_name/order
-                if (ex.workout_exercise_id && ex.workout_exercise_id === (insertedExercises.find((ie:any)=> ie.id === s.session_exercise_id)?.workout_exercise_id)) return true
-                return false
-              }) || null
+                if (ex.workout_exercise_id && ex.workout_exercise_id === (insertedExercises.find((ie:any)=> ie.id === s.session_exercise_id)?.workout_exercise_id)) return true;
+                return false;
+              }) || null;
 
-              const workoutExerciseId = originalEx?.workout_exercise_id || insertedExercises.find((ie:any)=> ie.id === s.session_exercise_id)?.workout_exercise_id || null
+              const workoutExerciseId = originalEx?.workout_exercise_id || insertedExercises.find((ie:any)=> ie.id === s.session_exercise_id)?.workout_exercise_id || null;
 
               workoutSetsRows.push({
                 workout_exercise_id: workoutExerciseId || s.session_exercise_id,
@@ -266,23 +295,23 @@ export async function POST(req: Request) {
                 weight: s.weight_used ?? null,
                 completed: true,
                 rest_seconds: s.duration_seconds ?? null
-              })
+              });
             }
 
             if (workoutSetsRows.length > 0) {
               // try insert, ignore error if table missing
-              const { error: mirrorErr } = await supabaseAdmin.from('workout_sets').insert(workoutSetsRows)
+              const { error: mirrorErr } = await supabaseAdmin.from('workout_sets').insert(workoutSetsRows);
               if (mirrorErr) {
-                console.warn('[workout-sessions][complete_with_details] could not mirror into workout_sets:', mirrorErr)
+                console.warn('[workout-sessions][complete_with_details] could not mirror into workout_sets:', mirrorErr);
               }
             }
           } catch (e) {
-            console.warn('[workout-sessions][complete_with_details] mirror into workout_sets failed:', e)
+            console.warn('[workout-sessions][complete_with_details] mirror into workout_sets failed:', e);
           }
         }
       }
 
-      return NextResponse.json({ ok: true, data: { session: updatedSession, exercises: insertedExercises } })
+      return NextResponse.json({ ok: true, data: { session: updatedSession, exercises: insertedExercises } });
     }
 
     return NextResponse.json({ ok: false, error: 'unknown action' }, { status: 400 })

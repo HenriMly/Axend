@@ -10,6 +10,11 @@ export async function POST(req: Request) {
     if (name) params.set('name', String(name));
 
     const url = `https://api.api-ninjas.com/v1/exercises?${params.toString()}`;
+    if (!process.env.API_NINJAS_KEY) {
+      console.warn('[external-exercises] API_NINJAS_KEY is missing');
+    } else {
+      console.info('[external-exercises] API_NINJAS_KEY is present');
+    }
     const res = await fetch(url, {
       headers: {
         'X-Api-Key': process.env.API_NINJAS_KEY || ''
